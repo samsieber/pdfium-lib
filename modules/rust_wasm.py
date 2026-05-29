@@ -39,6 +39,7 @@ def run_task_patch():
     _patch_freetype_sources(source_dir)
     _patch_zlib_config(source_dir)
     _patch_lcms_config(source_dir)
+    _patch_openjpeg_config(source_dir)
     _patch_abseil_config(source_dir)
     _patch_abseil_base_config(source_dir)
     _patch_abseil_random_config(source_dir)
@@ -50,6 +51,7 @@ def run_task_patch():
     _write_abseil_wasm_random(source_dir)
     _write_abseil_wasm_time(source_dir)
     _write_lcms_wasm_stubs(source_dir)
+    _write_openjpeg_wasm_stubs(source_dir)
     _write_fxcrt_wasm_files(source_dir)
     _write_fxge_wasm_platform(source_dir)
     _write_rust_wasm_setjmp_header(source_dir)
@@ -877,6 +879,53 @@ def _patch_lcms_config(source_dir):
 
 
 # -----------------------------------------------------------------------------
+def _patch_openjpeg_config(source_dir):
+    source_file = os.path.join(source_dir, "third_party", "BUILD.gn")
+
+    if f.file_has_content(source_file, '"libopenjpeg/openjpeg_wasm_stubs.c"'):
+        l.bullet("Skipped: rust wasm OpenJPEG", l.PURPLE)
+        return
+
+    source = """source_set("fx_libopenjpeg") {
+  configs -= [ "//build/config/compiler:chromium_code" ]"""
+
+    target = """source_set("fx_libopenjpeg") {
+  defines = []
+  configs -= [ "//build/config/compiler:chromium_code" ]"""
+
+    f.replace_in_file(source_file, source, target)
+
+    source = """    "libopenjpeg/thread.c",
+  ]
+  deps = [ "../core/fxcrt" ]
+}"""
+
+    target = """    "libopenjpeg/thread.c",
+  ]
+
+  if (current_os == "wasm32") {
+    defines += [
+      "fopen=pdfium_wasm_openjpeg_fopen",
+      "fread=pdfium_wasm_openjpeg_fread",
+      "fwrite=pdfium_wasm_openjpeg_fwrite",
+      "fclose=pdfium_wasm_openjpeg_fclose",
+      "fseek=pdfium_wasm_openjpeg_fseek",
+      "ftell=pdfium_wasm_openjpeg_ftell",
+      "fseeko=pdfium_wasm_openjpeg_fseeko",
+      "ftello=pdfium_wasm_openjpeg_ftello",
+      "getenv=pdfium_wasm_openjpeg_getenv",
+      "fprintf=pdfium_wasm_openjpeg_fprintf",
+    ]
+    sources += [ "libopenjpeg/openjpeg_wasm_stubs.c" ]
+  }
+  deps = [ "../core/fxcrt" ]
+}"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm OpenJPEG", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
 def _patch_abseil_config(source_dir):
     source_file = os.path.join(
         source_dir, "third_party", "abseil-cpp", "absl", "debugging", "BUILD.gn"
@@ -1518,6 +1567,106 @@ char* pdfium_wasm_lcms_ctime(const time_t* timer) {
 
     f.set_file_content(source_file, content)
     l.bullet("Applied: rust wasm LittleCMS stubs", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_openjpeg_wasm_stubs(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "libopenjpeg",
+        "openjpeg_wasm_stubs.c",
+    )
+
+    content = """#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <sys/types.h>
+
+#undef fopen
+#undef fread
+#undef fwrite
+#undef fclose
+#undef fseek
+#undef ftell
+#undef fseeko
+#undef ftello
+#undef getenv
+#undef fprintf
+
+FILE* pdfium_wasm_openjpeg_fopen(const char* filename, const char* mode) {
+  (void)filename;
+  (void)mode;
+  return NULL;
+}
+
+size_t pdfium_wasm_openjpeg_fread(void* buffer,
+                                  size_t size,
+                                  size_t count,
+                                  FILE* stream) {
+  (void)buffer;
+  (void)size;
+  (void)count;
+  (void)stream;
+  return 0;
+}
+
+size_t pdfium_wasm_openjpeg_fwrite(const void* buffer,
+                                   size_t size,
+                                   size_t count,
+                                   FILE* stream) {
+  (void)buffer;
+  (void)size;
+  (void)count;
+  (void)stream;
+  return 0;
+}
+
+int pdfium_wasm_openjpeg_fclose(FILE* stream) {
+  (void)stream;
+  return 0;
+}
+
+int pdfium_wasm_openjpeg_fseek(FILE* stream, long offset, int whence) {
+  (void)stream;
+  (void)offset;
+  (void)whence;
+  return -1;
+}
+
+long pdfium_wasm_openjpeg_ftell(FILE* stream) {
+  (void)stream;
+  return -1L;
+}
+
+int pdfium_wasm_openjpeg_fseeko(FILE* stream, off_t offset, int whence) {
+  (void)stream;
+  (void)offset;
+  (void)whence;
+  return -1;
+}
+
+off_t pdfium_wasm_openjpeg_ftello(FILE* stream) {
+  (void)stream;
+  return -1;
+}
+
+char* pdfium_wasm_openjpeg_getenv(const char* name) {
+  (void)name;
+  return NULL;
+}
+
+int pdfium_wasm_openjpeg_fprintf(FILE* stream, const char* format, ...) {
+  va_list args;
+  (void)stream;
+  va_start(args, format);
+  va_end(args);
+  return 0;
+}
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm OpenJPEG stubs", l.GREEN)
 
 
 # -----------------------------------------------------------------------------

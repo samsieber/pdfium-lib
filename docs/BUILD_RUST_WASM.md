@@ -130,16 +130,16 @@ obj/libpdfium.a`.
 
 The archive inspection currently reports:
 
-- `obj/libpdfium.a` is produced with 914 objects.
-- The archive has 19,133 defined symbols and 15,826 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 241
+- `obj/libpdfium.a` is produced with 915 objects.
+- The archive has 19,143 defined symbols and 15,824 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 238
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
 - The main browser-specific risk is the 14 browser-sensitive POSIX symbols,
-  led by `fwrite`, `getenv`, `fprintf`, `fread`, `time`, `gettimeofday`,
-  `fclose`, `fopen`, `pthread_mutex_lock`, `pthread_mutex_unlock`, and
-  `fseek`.
+  led by `fwrite`, `time`, `gettimeofday`, `getenv`, `fprintf`, `fread`,
+  `getpid`, `pthread_mutex_lock`, `pthread_mutex_unlock`, `fclose`, `fopen`,
+  and `fseek`.
 
 The first POSIX reduction replaces Pdfium's filename-based file access and
 folder enumeration with wasm-only unavailable implementations. This removes
@@ -189,8 +189,17 @@ profile loading. This removes the LittleCMS-origin `fopen`, `fread`, `fwrite`,
 `fclose`, `fseek`, `ftell`, `remove`, `pthread_mutex_*`, `time`, `gmtime`, and
 `ctime` references from the archive boundary.
 
+The seventh POSIX reduction redirects OpenJPEG's file-stream, environment, and
+debug-print helpers to wasm-local stubs. Pdfium's JPX decoder creates an
+OpenJPEG memory stream around the PDF image bytes, so the browser path does not
+need `opj_stream_create_file_stream()`, `OPJ_NUM_THREADS`, or OpenJPEG dump
+output. The stubs make filename-backed streams fail, hide environment
+variables, and discard debug printing. This removes the OpenJPEG-origin
+`fopen`, `fread`, `fwrite`, `fclose`, `fseeko`, `ftello`, `getenv`, and
+`fprintf` references from the archive boundary.
+
 The next phase is reducing or isolating the remaining POSIX-facing objects
 before attempting to link the archive from Rust. The first places to inspect are
-ICU data/timezone helpers, OpenJPEG file/debug helpers, libjpeg destination
-flushing, and Pdfium's remaining `fx_extension.o` time call plus
-`fx_random.o`'s `getpid` / `gettimeofday` seed path.
+ICU data/timezone helpers, libjpeg source/destination file helpers, Abseil
+logging/threading fallbacks, and Pdfium's remaining `fx_extension.o` time call
+plus `fx_random.o`'s `getpid` / `gettimeofday` seed path.
