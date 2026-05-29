@@ -175,6 +175,8 @@ def get_build_args(
         args.append("is_clang=false")
         args.append("use_custom_libcxx=false")
     elif target_os == "wasm32":
+        if config == "release":
+            args.append("is_official_build=true")
         args.append("pdf_is_complete_lib=true")
         args.append("pdf_is_standalone=true")
         args.append("is_clang=true")

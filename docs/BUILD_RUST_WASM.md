@@ -50,6 +50,8 @@ python3 make.py analyze-rust-wasm
 - Adds `build/toolchain/rust_wasm:wasm`.
 - Keeps `pdf_is_complete_lib=true` so the intended output remains a static
   archive.
+- Sets `is_official_build=true` for release builds so the static archive uses
+  Chromium/Pdfium's official release optimization profile.
 - Avoids Emscripten packaging flags such as `MODULARIZE`, `ccall`, and
   `STANDALONE_WASM` for the Rust link path.
 - Adds an `analyze-rust-wasm` checkpoint to inspect GN args, target metadata,
