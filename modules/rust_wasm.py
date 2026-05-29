@@ -32,6 +32,9 @@ def run_task_patch():
     _patch_fxcrt_config(source_dir)
     _patch_fxge_config(source_dir)
     _patch_icu_config(source_dir)
+    _patch_freetype_config(source_dir)
+    _write_freetype_wasm_stdlib(source_dir)
+    _write_rust_wasm_setjmp_header(source_dir)
     _write_rust_wasm_config(source_dir)
     _write_rust_wasm_toolchain(source_dir)
 
@@ -423,6 +426,172 @@ def _patch_icu_config(source_dir):
 
 
 # -----------------------------------------------------------------------------
+def _patch_freetype_config(source_dir):
+    source_file = os.path.join(source_dir, "third_party", "BUILD.gn")
+    line_content = 'FT_CONFIG_STANDARD_LIBRARY_H="freetype-custom-config/ftstdlib-wasm.h"'
+    line_number = f.get_file_line_number_with_content(
+        source_file, line_content, strip=True
+    )
+
+    if line_number:
+        l.bullet("Skipped: rust wasm FreeType", l.PURPLE)
+        return
+
+    source = """    defines = [
+      # GN currently does not escape '<' and '>' when generating xml based
+      # Visual Studio project files. As a result, use quotes instead of pointy
+      # brackets in these defines.
+      "FT_CONFIG_MODULES_H=\\"freetype-custom-config/ftmodule.h\\"",
+      "FT_CONFIG_OPTIONS_H=\\"freetype-custom-config/ftoption.h\\"",
+    ]"""
+
+    target = """    defines = [
+      # GN currently does not escape '<' and '>' when generating xml based
+      # Visual Studio project files. As a result, use quotes instead of pointy
+      # brackets in these defines.
+      "FT_CONFIG_MODULES_H=\\"freetype-custom-config/ftmodule.h\\"",
+      "FT_CONFIG_OPTIONS_H=\\"freetype-custom-config/ftoption.h\\"",
+    ]
+
+    if (current_os == "wasm32") {
+      defines += [
+        "FT_CONFIG_STANDARD_LIBRARY_H=\\"freetype-custom-config/ftstdlib-wasm.h\\"",
+      ]
+    }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm FreeType", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_freetype_wasm_stdlib(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "freetype",
+        "include",
+        "freetype-custom-config",
+        "ftstdlib-wasm.h",
+    )
+
+    content = """#ifndef FTSTDLIB_WASM_H_
+#define FTSTDLIB_WASM_H_
+
+#include <limits.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define ft_ptrdiff_t ptrdiff_t
+
+#define FT_CHAR_BIT CHAR_BIT
+#define FT_USHORT_MAX USHRT_MAX
+#define FT_INT_MAX INT_MAX
+#define FT_INT_MIN INT_MIN
+#define FT_UINT_MAX UINT_MAX
+#define FT_LONG_MIN LONG_MIN
+#define FT_LONG_MAX LONG_MAX
+#define FT_ULONG_MAX ULONG_MAX
+#ifdef LLONG_MAX
+#define FT_LLONG_MAX LLONG_MAX
+#endif
+#ifdef LLONG_MIN
+#define FT_LLONG_MIN LLONG_MIN
+#endif
+#ifdef ULLONG_MAX
+#define FT_ULLONG_MAX ULLONG_MAX
+#endif
+
+#define ft_memchr memchr
+#define ft_memcmp memcmp
+#define ft_memcpy memcpy
+#define ft_memmove memmove
+#define ft_memset memset
+#define ft_strcat strcat
+#define ft_strcmp strcmp
+#define ft_strcpy strcpy
+#define ft_strlen strlen
+#define ft_strncmp strncmp
+#define ft_strncpy strncpy
+#define ft_strrchr strrchr
+#define ft_strstr strstr
+
+#define FT_FILE FILE
+#define ft_fclose fclose
+#define ft_fopen fopen
+#define ft_fread fread
+#define ft_fseek fseek
+#define ft_ftell ftell
+#define ft_snprintf snprintf
+
+#define ft_qsort qsort
+
+#define ft_scalloc calloc
+#define ft_sfree free
+#define ft_smalloc malloc
+#define ft_srealloc realloc
+
+#define ft_strtol strtol
+#define ft_getenv getenv
+
+typedef int ft_jmp_buf[1];
+
+static inline void ft_wasm_longjmp(ft_jmp_buf buffer, int value) {
+  (void)buffer;
+  (void)value;
+  __builtin_trap();
+}
+
+#define ft_longjmp ft_wasm_longjmp
+#define ft_setjmp(buffer) 0
+
+#endif /* FTSTDLIB_WASM_H_ */
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm FreeType stdlib", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_rust_wasm_setjmp_header(source_dir):
+    source_file = os.path.join(
+        source_dir, "build", "config", "rust_wasm", "include", "setjmp.h"
+    )
+
+    content = """#ifndef RUST_WASM_SETJMP_H_
+#define RUST_WASM_SETJMP_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef int jmp_buf[1];
+
+static inline int setjmp(jmp_buf buffer) {
+  (void)buffer;
+  return 0;
+}
+
+static inline void longjmp(jmp_buf buffer, int value) {
+  (void)buffer;
+  (void)value;
+  __builtin_trap();
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* RUST_WASM_SETJMP_H_ */
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm setjmp shim", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
 def _write_rust_wasm_config(source_dir):
     source_file = os.path.join(source_dir, "build", "config", "rust_wasm", "BUILD.gn")
 
@@ -433,6 +602,8 @@ def _write_rust_wasm_config(source_dir):
 }
 
 config("compiler") {
+  include_dirs = [ "//build/config/rust_wasm/include" ]
+
   defines = [
     "_POSIX_C_SOURCE=200112",
     "__wasi__",

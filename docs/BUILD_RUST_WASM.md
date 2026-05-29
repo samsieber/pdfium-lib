@@ -106,3 +106,19 @@ through FreeType's `ftstdlib.h`, which includes WASI `setjmp.h`. That header
 requires wasm SJLJ/exception support, so the next decision is whether to disable
 or replace FreeType's setjmp path instead of enabling exception machinery for
 the browser build.
+
+The current probe replaces FreeType's standard-library header for `wasm32` so
+the build can continue without enabling wasm SJLJ. This makes FreeType's
+validator longjmp path trap if an invalid table reaches it, so it is a compile
+probe and not yet the final runtime-safety answer.
+
+Pdfium's JPEG and PNG codec wrappers also include `<setjmp.h>` directly. The
+prototype therefore places a wasm-only `setjmp.h` shim ahead of the sysroot
+headers. Like the FreeType override, it treats `longjmp()` as a trap while we
+continue mapping the compile/link surface.
+
+After the setjmp shim, the compile probe reaches Abseil debugging targets.
+Those include `<csignal>` / `<signal.h>`, where WASI reports that wasm lacks
+signal support. The next decision point is whether to remove Abseil debugging
+signal/stack targets from this Pdfium configuration or add more browser-wasm
+no-op shims.
