@@ -39,6 +39,7 @@ def run_task_patch():
     _patch_abseil_config(source_dir)
     _write_freetype_wasm_stdlib(source_dir)
     _write_abseil_wasm_debugging(source_dir)
+    _write_fxcrt_wasm_files(source_dir)
     _write_rust_wasm_setjmp_header(source_dir)
     _write_rust_wasm_config(source_dir)
     _write_rust_wasm_toolchain(source_dir)
@@ -585,16 +586,61 @@ def _patch_emscripten_link_flags(source_dir):
 # -----------------------------------------------------------------------------
 def _patch_fxcrt_config(source_dir):
     source_file = os.path.join(source_dir, "core", "fxcrt", "BUILD.gn")
-    line_content = "if (is_posix || is_wasm) {"
+    line_content = '"cfx_fileaccess_wasm.cpp",'
     line_number = f.get_file_line_number_with_content(
         source_file, line_content, strip=True
     )
 
-    if line_number:
+    if line_number and f.file_has_content(source_file, "if (is_posix && !is_wasm) {"):
         l.bullet("Skipped: rust wasm fxcrt", l.PURPLE)
         return
 
-    f.replace_in_file(source_file, "if (is_posix) {", "if (is_posix || is_wasm) {")
+    replacement = """  if (is_posix && !is_wasm) {
+    sources += [
+      "cfx_fileaccess_posix.cpp",
+      "cfx_fileaccess_posix.h",
+      "fx_folder_posix.cpp",
+    ]
+  }
+  if (is_wasm) {
+    sources += [
+      "cfx_fileaccess_wasm.cpp",
+      "fx_folder_wasm.cpp",
+    ]
+  }"""
+
+    if f.file_has_content(source_file, "if (is_posix || is_wasm) {"):
+        source = """  if (is_posix || is_wasm) {
+    sources += [
+      "cfx_fileaccess_posix.cpp",
+      "cfx_fileaccess_posix.h",
+      "fx_folder_posix.cpp",
+    ]
+  }"""
+    elif line_number:
+        source = """  if (is_posix) {
+    sources += [
+      "cfx_fileaccess_posix.cpp",
+      "cfx_fileaccess_posix.h",
+      "fx_folder_posix.cpp",
+    ]
+  }
+  if (is_wasm) {
+    sources += [
+      "cfx_fileaccess_wasm.cpp",
+      "fx_folder_wasm.cpp",
+    ]
+  }"""
+    else:
+        source = """  if (is_posix) {
+    sources += [
+      "cfx_fileaccess_posix.cpp",
+      "cfx_fileaccess_posix.h",
+      "fx_folder_posix.cpp",
+    ]
+  }"""
+
+    f.replace_in_file(source_file, source, replacement)
     l.bullet("Applied: rust wasm fxcrt", l.GREEN)
 
 
@@ -853,6 +899,91 @@ ABSL_NAMESPACE_END
     f.set_file_content(examine_stack_file, examine_stack_content)
     f.set_file_content(failure_signal_file, failure_signal_content)
     l.bullet("Applied: rust wasm Abseil debugging", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_fxcrt_wasm_files(source_dir):
+    file_access_file = os.path.join(
+        source_dir, "core", "fxcrt", "cfx_fileaccess_wasm.cpp"
+    )
+    folder_file = os.path.join(source_dir, "core", "fxcrt", "fx_folder_wasm.cpp")
+
+    file_access_content = """// Copyright 2026 The PDFium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "core/fxcrt/fileaccess_iface.h"
+
+#include <memory>
+
+namespace {
+
+class CFX_FileAccess_Wasm final : public FileAccessIface {
+ public:
+  bool Open(ByteStringView fileName) override {
+    (void)fileName;
+    return false;
+  }
+
+  void Close() override {}
+  FX_FILESIZE GetSize() const override { return 0; }
+  FX_FILESIZE GetPosition() const override { return static_cast<FX_FILESIZE>(-1); }
+
+  FX_FILESIZE SetPosition(FX_FILESIZE pos) override {
+    (void)pos;
+    return static_cast<FX_FILESIZE>(-1);
+  }
+
+  size_t Read(pdfium::span<uint8_t> buffer) override {
+    (void)buffer;
+    return 0;
+  }
+
+  size_t Write(pdfium::span<const uint8_t> buffer) override {
+    (void)buffer;
+    return 0;
+  }
+
+  size_t ReadPos(pdfium::span<uint8_t> buffer, FX_FILESIZE pos) override {
+    (void)buffer;
+    (void)pos;
+    return 0;
+  }
+
+  bool Flush() override { return false; }
+
+  bool Truncate(FX_FILESIZE szFile) override {
+    (void)szFile;
+    return false;
+  }
+};
+
+}  // namespace
+
+// static
+std::unique_ptr<FileAccessIface> FileAccessIface::Create() {
+  return std::make_unique<CFX_FileAccess_Wasm>();
+}
+"""
+
+    folder_content = """// Copyright 2026 The PDFium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "core/fxcrt/fx_folder.h"
+
+#include <memory>
+
+// static
+std::unique_ptr<FX_Folder> FX_Folder::OpenFolder(const ByteString& path) {
+  (void)path;
+  return nullptr;
+}
+"""
+
+    f.set_file_content(file_access_file, file_access_content)
+    f.set_file_content(folder_file, folder_content)
+    l.bullet("Applied: rust wasm fxcrt file access", l.GREEN)
 
 
 # -----------------------------------------------------------------------------

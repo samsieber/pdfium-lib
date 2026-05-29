@@ -131,19 +131,24 @@ obj/libpdfium.a`.
 The archive inspection currently reports:
 
 - `obj/libpdfium.a` is produced with 921 objects.
-- The archive has 19,290 defined symbols and 16,023 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 272
+- The archive has 19,280 defined symbols and 16,002 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 265
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
-- The main browser-specific risk is the 27 browser-sensitive POSIX symbols,
+- The main browser-specific risk is the 20 browser-sensitive POSIX symbols,
   led by `fread`, `fclose`, `fopen`, `fwrite`, `fseek`, `open`, `read`,
   `close`, `getenv`, `time`, `pthread_mutex_lock`, and
   `pthread_mutex_unlock`.
 
-The next phase is reducing or isolating those POSIX-facing objects before
-attempting to link the archive from Rust. The first places to inspect are
-Pdfium file access (`cfx_fileaccess_posix.o`), font discovery
-(`cfx_folderfontinfo.o`), FreeType file helpers (`ftsystem.o`), Abseil time
-zone helpers, zlib gz file helpers, LittleCMS file/debug helpers, and
-`fx_random.o`'s `getpid` / `gettimeofday` seed path.
+The first POSIX reduction replaces Pdfium's filename-based file access and
+folder enumeration with wasm-only unavailable implementations. This removes
+`cfx_fileaccess_posix.o` and `fx_folder_posix.o` from the wasm graph. Browser
+consumers should use memory/callback document APIs instead of
+`FPDF_LoadDocument()` filename paths.
+
+The next phase is reducing or isolating the remaining POSIX-facing objects
+before attempting to link the archive from Rust. The first places to inspect are
+font discovery (`cfx_folderfontinfo.o`), FreeType file helpers (`ftsystem.o`),
+Abseil time/sysinfo/seed helpers, zlib gz file helpers, LittleCMS file/debug
+helpers, and `fx_random.o`'s `getpid` / `gettimeofday` seed path.
