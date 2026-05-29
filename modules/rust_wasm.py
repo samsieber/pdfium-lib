@@ -31,6 +31,7 @@ def run_task_patch():
     _patch_emscripten_link_flags(source_dir)
     _patch_fxcrt_config(source_dir)
     _patch_fxge_config(source_dir)
+    _patch_icu_config(source_dir)
     _write_rust_wasm_config(source_dir)
     _write_rust_wasm_toolchain(source_dir)
 
@@ -368,6 +369,57 @@ def _patch_fxge_config(source_dir):
         "if (is_linux || is_chromeos || is_wasm) {",
     )
     l.bullet("Applied: rust wasm fxge", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_icu_config(source_dir):
+    source_file = os.path.join(source_dir, "third_party", "icu", "BUILD.gn")
+    line_content = '"U_HAVE_MMAP=0",'
+    line_number = f.get_file_line_number_with_content(
+        source_file, line_content, strip=True
+    )
+
+    if line_number:
+        l.bullet("Skipped: rust wasm ICU", l.PURPLE)
+        return
+
+    wasm_block_line = f.get_file_line_number_with_content(
+        source_file, 'if (current_os == "wasm32") {', strip=True
+    )
+    if wasm_block_line:
+        f.replace_in_file(
+            source_file,
+            '"U_HAVE_TZNAME=0",',
+            '"U_HAVE_TZNAME=0",\n      "U_HAVE_MMAP=0",',
+        )
+        l.bullet("Applied: rust wasm ICU", l.GREEN)
+        return
+
+    source = """  if (current_cpu == "wasm") {
+    # Tell ICU that we are a 32 bit platform, otherwise,
+    # double-conversion-utils.h doesn't know how to operate.
+    defines += [ "__i386__" ]
+  }
+}"""
+
+    target = """  if (current_cpu == "wasm") {
+    # Tell ICU that we are a 32 bit platform, otherwise,
+    # double-conversion-utils.h doesn't know how to operate.
+    defines += [ "__i386__" ]
+  }
+
+  if (current_os == "wasm32") {
+    defines += [
+      "U_HAVE_TZSET=0",
+      "U_HAVE_TIMEZONE=0",
+      "U_HAVE_TZNAME=0",
+      "U_HAVE_MMAP=0",
+    ]
+  }
+}"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm ICU", l.GREEN)
 
 
 # -----------------------------------------------------------------------------

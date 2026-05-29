@@ -93,3 +93,16 @@ The final `wasmpdf` artifact should pass all of these checks:
 - Generated imports do not require Emscripten runtime modules.
 - PDFium file access uses memory/callback APIs rather than browser-inaccessible
   POSIX filesystem calls.
+
+## Current compile probe
+
+With `wasi-sysroot-32.0` used as a headers probe, the build reaches ICU C++
+sources. ICU must be told that the browser-oriented wasm32 target does not have
+POSIX timezone globals such as `tzset`, `timezone`, or `tzname`, and that it
+must not select the POSIX `mmap` implementation.
+
+After those ICU settings, the next compile blocker moves into Pdfium font code
+through FreeType's `ftstdlib.h`, which includes WASI `setjmp.h`. That header
+requires wasm SJLJ/exception support, so the next decision is whether to disable
+or replace FreeType's setjmp path instead of enabling exception machinery for
+the browser build.
