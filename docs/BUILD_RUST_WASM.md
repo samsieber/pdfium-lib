@@ -130,16 +130,16 @@ obj/libpdfium.a`.
 
 The archive inspection currently reports:
 
-- `obj/libpdfium.a` is produced with 916 objects.
-- The archive has 19,148 defined symbols and 15,824 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 237
+- `obj/libpdfium.a` is produced with 917 objects.
+- The archive has 19,152 defined symbols and 15,824 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 236
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
-- The main browser-specific risk is the 13 browser-sensitive POSIX symbols,
-  led by `fwrite`, `getenv`, `fprintf`, `fread`, `pthread_mutex_lock`,
-  `pthread_mutex_unlock`, `gettimeofday`, `time`, `fclose`, `fopen`, and
-  `fseek`.
+- The main browser-specific risk is the 12 browser-sensitive POSIX symbols,
+  led by `getenv`, `fwrite`, `pthread_mutex_lock`, `pthread_mutex_unlock`,
+  `fprintf`, `gettimeofday`, `time`, `fclose`, `fopen`, `fread`, `fseek`, and
+  `ftell`.
 
 The first POSIX reduction replaces Pdfium's filename-based file access and
 folder enumeration with wasm-only unavailable implementations. This removes
@@ -206,7 +206,14 @@ UTC epoch `localtime()`, a fixed placeholder process id, and a zero
 archive boundary. The final browser integration should replace this compile
 probe with explicit entropy and clock hooks from Rust or JavaScript.
 
+The ninth POSIX reduction redirects libjpeg-turbo's stdio source, destination,
+and default error-printing helpers to wasm-local stubs. Pdfium uses memory
+buffers for JPEG data, so the browser path does not need libjpeg's `FILE*`
+source/destination managers or stderr printing. This removes the
+`jdatadst.o`, `jdatasrc.o`, and `jerror.o` origins from the archive boundary
+while preserving `jpeg_mem_src()` and `jpeg_mem_dest()`.
+
 The next phase is reducing or isolating the remaining POSIX-facing objects
 before attempting to link the archive from Rust. The first places to inspect are
-ICU data/timezone helpers, libjpeg source/destination file helpers, Abseil
-logging/threading fallbacks, and FreeType's remaining environment probe.
+ICU data/timezone helpers, Abseil logging/threading fallbacks, and FreeType's
+remaining environment probe.

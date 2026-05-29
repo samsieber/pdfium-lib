@@ -41,6 +41,7 @@ def run_task_patch():
     _patch_zlib_config(source_dir)
     _patch_lcms_config(source_dir)
     _patch_openjpeg_config(source_dir)
+    _patch_libjpeg_config(source_dir)
     _patch_abseil_config(source_dir)
     _patch_abseil_base_config(source_dir)
     _patch_abseil_random_config(source_dir)
@@ -53,6 +54,7 @@ def run_task_patch():
     _write_abseil_wasm_time(source_dir)
     _write_lcms_wasm_stubs(source_dir)
     _write_openjpeg_wasm_stubs(source_dir)
+    _write_libjpeg_wasm_stubs(source_dir)
     _write_fxcrt_wasm_time_random(source_dir)
     _write_fxcrt_wasm_files(source_dir)
     _write_fxge_wasm_platform(source_dir)
@@ -961,6 +963,48 @@ def _patch_openjpeg_config(source_dir):
 
 
 # -----------------------------------------------------------------------------
+def _patch_libjpeg_config(source_dir):
+    source_file = os.path.join(source_dir, "third_party", "libjpeg_turbo", "BUILD.gn")
+
+    if f.file_has_content(source_file, '"src/jpeg_wasm_stubs.c"'):
+        l.bullet("Skipped: rust wasm libjpeg", l.PURPLE)
+        return
+
+    source = """static_library("libjpeg") {
+  sources = libjpeg_sources
+
+  defines = [
+    "NO_GETENV",
+    "NO_PUTENV",
+  ]
+
+  configs += ["""
+
+    target = """static_library("libjpeg") {
+  sources = libjpeg_sources
+
+  defines = [
+    "NO_GETENV",
+    "NO_PUTENV",
+  ]
+
+  if (current_os == "wasm32") {
+    defines += [
+      "fread=pdfium_wasm_libjpeg_fread",
+      "fwrite=pdfium_wasm_libjpeg_fwrite",
+      "fflush=pdfium_wasm_libjpeg_fflush",
+      "fprintf=pdfium_wasm_libjpeg_fprintf",
+    ]
+    sources += [ "src/jpeg_wasm_stubs.c" ]
+  }
+
+  configs += ["""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm libjpeg", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
 def _patch_abseil_config(source_dir):
     source_file = os.path.join(
         source_dir, "third_party", "abseil-cpp", "absl", "debugging", "BUILD.gn"
@@ -1702,6 +1746,65 @@ int pdfium_wasm_openjpeg_fprintf(FILE* stream, const char* format, ...) {
 
     f.set_file_content(source_file, content)
     l.bullet("Applied: rust wasm OpenJPEG stubs", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_libjpeg_wasm_stubs(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "libjpeg_turbo",
+        "src",
+        "jpeg_wasm_stubs.c",
+    )
+
+    content = """#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
+
+#undef fread
+#undef fwrite
+#undef fflush
+#undef fprintf
+
+size_t pdfium_wasm_libjpeg_fread(void* buffer,
+                                 size_t size,
+                                 size_t count,
+                                 FILE* stream) {
+  (void)buffer;
+  (void)size;
+  (void)count;
+  (void)stream;
+  return 0;
+}
+
+size_t pdfium_wasm_libjpeg_fwrite(const void* buffer,
+                                  size_t size,
+                                  size_t count,
+                                  FILE* stream) {
+  (void)buffer;
+  (void)size;
+  (void)count;
+  (void)stream;
+  return 0;
+}
+
+int pdfium_wasm_libjpeg_fflush(FILE* stream) {
+  (void)stream;
+  return 0;
+}
+
+int pdfium_wasm_libjpeg_fprintf(FILE* stream, const char* format, ...) {
+  va_list args;
+  (void)stream;
+  va_start(args, format);
+  va_end(args);
+  return 0;
+}
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm libjpeg stubs", l.GREEN)
 
 
 # -----------------------------------------------------------------------------
