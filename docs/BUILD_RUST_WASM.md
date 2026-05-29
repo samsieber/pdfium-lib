@@ -122,3 +122,13 @@ Those include `<csignal>` / `<signal.h>`, where WASI reports that wasm lacks
 signal support. The next decision point is whether to remove Abseil debugging
 signal/stack targets from this Pdfium configuration or add more browser-wasm
 no-op shims.
+
+The current probe keeps Abseil's public debugging APIs linkable but swaps in
+wasm-only no-op implementations for stack examination and failure signal
+handler sources. Browser wasm has no Unix signal context to inspect, so this is
+preferable to linking WASI signal emulation into the final module.
+
+With the Abseil replacements in place, the compile probe reaches `AR
+obj/libpdfium.a`. The next phase is archive inspection: verify object imports,
+undefined symbols, and any accidental WASI or Emscripten runtime assumptions
+before attempting to link the archive from Rust.

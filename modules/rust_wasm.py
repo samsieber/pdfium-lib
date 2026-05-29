@@ -33,7 +33,9 @@ def run_task_patch():
     _patch_fxge_config(source_dir)
     _patch_icu_config(source_dir)
     _patch_freetype_config(source_dir)
+    _patch_abseil_config(source_dir)
     _write_freetype_wasm_stdlib(source_dir)
+    _write_abseil_wasm_debugging(source_dir)
     _write_rust_wasm_setjmp_header(source_dir)
     _write_rust_wasm_config(source_dir)
     _write_rust_wasm_toolchain(source_dir)
@@ -461,6 +463,154 @@ def _patch_freetype_config(source_dir):
 
     f.replace_in_file(source_file, source, target)
     l.bullet("Applied: rust wasm FreeType", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_abseil_config(source_dir):
+    source_file = os.path.join(
+        source_dir, "third_party", "abseil-cpp", "absl", "debugging", "BUILD.gn"
+    )
+    line_content = '"internal/examine_stack_wasm.cc"'
+    line_number = f.get_file_line_number_with_content(
+        source_file, line_content, strip=True
+    )
+
+    if line_number:
+        l.bullet("Skipped: rust wasm Abseil", l.PURPLE)
+        return
+
+    f.replace_in_file(
+        source_file,
+        """absl_source_set("examine_stack") {
+  sources = [ "internal/examine_stack.cc" ]""",
+        """absl_source_set("examine_stack") {
+  sources = []
+  if (current_os == "wasm32") {
+    sources += [ "internal/examine_stack_wasm.cc" ]
+  } else {
+    sources += [ "internal/examine_stack.cc" ]
+  }""",
+    )
+    f.replace_in_file(
+        source_file,
+        """absl_source_set("failure_signal_handler") {
+  sources = [ "failure_signal_handler.cc" ]""",
+        """absl_source_set("failure_signal_handler") {
+  sources = []
+  if (current_os == "wasm32") {
+    sources += [ "failure_signal_handler_wasm.cc" ]
+  } else {
+    sources += [ "failure_signal_handler.cc" ]
+  }""",
+    )
+    l.bullet("Applied: rust wasm Abseil", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_abseil_wasm_debugging(source_dir):
+    examine_stack_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "debugging",
+        "internal",
+        "examine_stack_wasm.cc",
+    )
+    failure_signal_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "debugging",
+        "failure_signal_handler_wasm.cc",
+    )
+
+    examine_stack_content = """#include "absl/debugging/internal/examine_stack.h"
+
+#include "absl/base/attributes.h"
+
+namespace absl {
+ABSL_NAMESPACE_BEGIN
+namespace debugging_internal {
+
+namespace {
+ABSL_CONST_INIT SymbolizeUrlEmitter debug_stack_trace_hook = nullptr;
+}
+
+void RegisterDebugStackTraceHook(SymbolizeUrlEmitter hook) {
+  debug_stack_trace_hook = hook;
+}
+
+SymbolizeUrlEmitter GetDebugStackTraceHook() {
+  return debug_stack_trace_hook;
+}
+
+void* GetProgramCounter(void* const vuc) {
+  (void)vuc;
+  return nullptr;
+}
+
+void DumpPCAndFrameSizesAndStackTrace(void* const pc,
+                                      void* const stack[],
+                                      int frame_sizes[],
+                                      int depth,
+                                      int min_dropped_frames,
+                                      bool symbolize_stacktrace,
+                                      OutputWriter* writer,
+                                      void* writer_arg) {
+  (void)pc;
+  (void)stack;
+  (void)frame_sizes;
+  (void)depth;
+  (void)min_dropped_frames;
+  (void)symbolize_stacktrace;
+  (void)writer;
+  (void)writer_arg;
+}
+
+void DumpStackTrace(int min_dropped_frames,
+                    int max_num_frames,
+                    bool symbolize_stacktrace,
+                    OutputWriter* writer,
+                    void* writer_arg) {
+  (void)min_dropped_frames;
+  (void)max_num_frames;
+  (void)symbolize_stacktrace;
+  (void)writer;
+  (void)writer_arg;
+}
+
+}  // namespace debugging_internal
+ABSL_NAMESPACE_END
+}  // namespace absl
+"""
+
+    failure_signal_content = """#include "absl/debugging/failure_signal_handler.h"
+
+namespace absl {
+ABSL_NAMESPACE_BEGIN
+
+void InstallFailureSignalHandler(const FailureSignalHandlerOptions& options) {
+  (void)options;
+}
+
+namespace debugging_internal {
+
+const char* FailureSignalToString(int signo) {
+  (void)signo;
+  return "";
+}
+
+}  // namespace debugging_internal
+
+ABSL_NAMESPACE_END
+}  // namespace absl
+"""
+
+    f.set_file_content(examine_stack_file, examine_stack_content)
+    f.set_file_content(failure_signal_file, failure_signal_content)
+    l.bullet("Applied: rust wasm Abseil debugging", l.GREEN)
 
 
 # -----------------------------------------------------------------------------
