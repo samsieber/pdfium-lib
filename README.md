@@ -102,6 +102,10 @@ Check tutorial here: [Build for Android](docs/BUILD_ANDROID.md)
 
 Check tutorial here: [Build for WASM](docs/BUILD_WASM.md)
 
+## How to prototype Rust static WASM
+
+Check experimental notes here: [Build for Rust static WASM](docs/BUILD_RUST_WASM.md)
+
 ## Prebuilt binary
 
 Access releases page to download prebuilt binaries:

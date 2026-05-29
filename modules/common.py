@@ -113,6 +113,8 @@ def get_build_args(
     target_environment=None,
     libc=None,
     enable_v8=False,
+    rust_target=None,
+    rust_wasm_sysroot=None,
 ):
     args = []
 
@@ -171,6 +173,17 @@ def get_build_args(
         args.append("pdf_is_complete_lib=true")
         args.append("is_clang=false")
         args.append("use_custom_libcxx=false")
+    elif target_os == "wasm32":
+        args.append("pdf_is_complete_lib=true")
+        args.append("pdf_is_standalone=true")
+        args.append("is_clang=true")
+        args.append("use_custom_libcxx=false")
+        args.append("clang_use_chrome_plugins=false")
+        args.append("is_component_build=false")
+        if rust_target:
+            args.append(f'rust_wasm_target="{rust_target}"')
+        if rust_wasm_sysroot:
+            args.append(f'rust_wasm_sysroot="{rust_wasm_sysroot}"')
 
     if libc == "musl":
         args.append("is_musl=true")

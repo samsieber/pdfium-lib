@@ -54,6 +54,13 @@ Tasks:
   - publish-wasm
   - publish-to-web-wasm
   - archive-wasm
+
+  - build-pdfium-rust-wasm
+  - patch-rust-wasm
+  - build-rust-wasm
+  - analyze-rust-wasm
+  - install-rust-wasm
+  - archive-rust-wasm
 """
 
 from docopt import docopt
@@ -65,6 +72,7 @@ import modules.common as common
 import modules.config as c
 import modules.ios as ios
 import modules.macos as macos
+import modules.rust_wasm as rust_wasm
 import modules.wasm as wasm
 
 
@@ -231,6 +239,34 @@ def main(options):
     # archive - wasm
     elif task == "archive-wasm":
         wasm.run_task_archive()
+
+    #######################
+    # Rust WASM
+    #######################
+
+    # build pdfium - rust wasm
+    elif task == "build-pdfium-rust-wasm":
+        rust_wasm.run_task_build_pdfium()
+
+    # patch - rust wasm
+    elif task == "patch-rust-wasm":
+        rust_wasm.run_task_patch()
+
+    # build - rust wasm
+    elif task == "build-rust-wasm":
+        rust_wasm.run_task_build()
+
+    # analyze - rust wasm
+    elif task == "analyze-rust-wasm":
+        rust_wasm.run_task_analyze()
+
+    # install - rust wasm
+    elif task == "install-rust-wasm":
+        rust_wasm.run_task_install()
+
+    # archive - rust wasm
+    elif task == "archive-rust-wasm":
+        rust_wasm.run_task_archive()
 
     #######################
     # Invalid

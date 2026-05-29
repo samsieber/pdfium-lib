@@ -80,3 +80,16 @@ shared_lib_wasm = False
 targets_wasm = [
     {"target_os": "emscripten", "target_cpu": "wasm", "pdfium_os": "emscripten"},
 ]
+
+# rust wasm
+configurations_rust_wasm = ["release"]
+shared_lib_rust_wasm = False
+targets_rust_wasm = [
+    {
+        "target_os": "wasm32",
+        "target_cpu": "wasm",
+        "pdfium_os": "wasm32",
+        "rust_target": "wasm32-unknown-unknown",
+        "sysroot_env": "RUST_WASM_SYSROOT",
+    },
+]
