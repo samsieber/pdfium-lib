@@ -38,9 +38,13 @@ def run_task_patch():
     _patch_freetype_config(source_dir)
     _patch_freetype_sources(source_dir)
     _patch_abseil_config(source_dir)
+    _patch_abseil_base_config(source_dir)
+    _patch_abseil_random_config(source_dir)
     _write_freetype_wasm_stdlib(source_dir)
     _write_freetype_wasm_system(source_dir)
     _write_abseil_wasm_debugging(source_dir)
+    _write_abseil_wasm_base(source_dir)
+    _write_abseil_wasm_random(source_dir)
     _write_fxcrt_wasm_files(source_dir)
     _write_fxge_wasm_platform(source_dir)
     _write_rust_wasm_setjmp_header(source_dir)
@@ -836,6 +840,67 @@ def _patch_abseil_config(source_dir):
 
 
 # -----------------------------------------------------------------------------
+def _patch_abseil_base_config(source_dir):
+    source_file = os.path.join(
+        source_dir, "third_party", "abseil-cpp", "absl", "base", "BUILD.gn"
+    )
+
+    if f.file_has_content(source_file, '"internal/sysinfo_wasm.cc"'):
+        l.bullet("Skipped: rust wasm Abseil base", l.PURPLE)
+        return
+
+    source = """    "internal/spinlock.cc",
+    "internal/sysinfo.cc",
+    "internal/thread_identity.cc","""
+
+    target = """    "internal/spinlock.cc",
+    "internal/sysinfo.cc",
+    "internal/thread_identity.cc",
+  ]
+
+  if (current_os == "wasm32") {
+    sources -= [ "internal/sysinfo.cc" ]
+    sources += [ "internal/sysinfo_wasm.cc" ]
+  }
+
+  sources += ["""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm Abseil base", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_abseil_random_config(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "random",
+        "internal",
+        "BUILD.gn",
+    )
+
+    if f.file_has_content(source_file, '"seed_material_wasm.cc"'):
+        l.bullet("Skipped: rust wasm Abseil random", l.PURPLE)
+        return
+
+    source = """  public = [ "seed_material.h" ]
+  sources = [ "seed_material.cc" ]"""
+
+    target = """  public = [ "seed_material.h" ]
+  sources = []
+  if (current_os == "wasm32") {
+    sources += [ "seed_material_wasm.cc" ]
+  } else {
+    sources += [ "seed_material.cc" ]
+  }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm Abseil random", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
 def _write_abseil_wasm_debugging(source_dir):
     examine_stack_file = os.path.join(
         source_dir,
@@ -940,6 +1005,127 @@ ABSL_NAMESPACE_END
     f.set_file_content(examine_stack_file, examine_stack_content)
     f.set_file_content(failure_signal_file, failure_signal_content)
     l.bullet("Applied: rust wasm Abseil debugging", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_abseil_wasm_base(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "base",
+        "internal",
+        "sysinfo_wasm.cc",
+    )
+
+    content = """#include "absl/base/internal/sysinfo.h"
+
+#include "absl/base/config.h"
+
+namespace absl {
+ABSL_NAMESPACE_BEGIN
+namespace base_internal {
+
+int NumCPUs() {
+  return 1;
+}
+
+double NominalCPUFrequency() {
+  return 1.0;
+}
+
+pid_t GetTID() {
+  return 1;
+}
+
+pid_t GetCachedTID() {
+  return GetTID();
+}
+
+}  // namespace base_internal
+ABSL_NAMESPACE_END
+}  // namespace absl
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm Abseil base", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_abseil_wasm_random(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "random",
+        "internal",
+        "seed_material_wasm.cc",
+    )
+
+    content = """#include "absl/random/internal/seed_material.h"
+
+#include <cassert>
+#include <cstdint>
+
+#include "absl/base/config.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
+
+namespace absl {
+ABSL_NAMESPACE_BEGIN
+namespace random_internal {
+
+bool ReadSeedMaterialFromOSEntropy(absl::Span<uint32_t> values) {
+  assert(values.data() != nullptr);
+  if (values.data() == nullptr) {
+    return false;
+  }
+  return values.empty();
+}
+
+void MixIntoSeedMaterial(absl::Span<const uint32_t> sequence,
+                         absl::Span<uint32_t> seed_material) {
+  constexpr uint32_t kInitVal = 0x43b0d7e5;
+  constexpr uint32_t kHashMul = 0x931e8875;
+  constexpr uint32_t kMixMulL = 0xca01f9dd;
+  constexpr uint32_t kMixMulR = 0x4973f715;
+  constexpr uint32_t kShiftSize = sizeof(uint32_t) * 8 / 2;
+
+  uint32_t hash_const = kInitVal;
+  auto hash = [&](uint32_t value) {
+    value ^= hash_const;
+    hash_const *= kHashMul;
+    value *= hash_const;
+    value ^= value >> kShiftSize;
+    return value;
+  };
+
+  auto mix = [&](uint32_t x, uint32_t y) {
+    uint32_t result = kMixMulL * x - kMixMulR * y;
+    result ^= result >> kShiftSize;
+    return result;
+  };
+
+  for (const auto& seq_val : sequence) {
+    for (auto& elem : seed_material) {
+      elem = mix(elem, hash(seq_val));
+    }
+  }
+}
+
+absl::optional<uint32_t> GetSaltMaterial() {
+  return absl::nullopt;
+}
+
+}  // namespace random_internal
+ABSL_NAMESPACE_END
+}  // namespace absl
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm Abseil random", l.GREEN)
 
 
 # -----------------------------------------------------------------------------

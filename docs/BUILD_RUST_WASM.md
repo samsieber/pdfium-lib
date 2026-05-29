@@ -131,15 +131,15 @@ obj/libpdfium.a`.
 The archive inspection currently reports:
 
 - `obj/libpdfium.a` is produced with 920 objects.
-- The archive has 19,256 defined symbols and 15,952 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 265
+- The archive has 19,241 defined symbols and 15,936 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 263
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
 - The main browser-specific risk is the 20 browser-sensitive POSIX symbols,
-  led by `fread`, `fclose`, `fopen`, `fwrite`, `fseek`, `open`, `read`,
-  `close`, `getenv`, `time`, `pthread_mutex_lock`, and
-  `pthread_mutex_unlock`.
+  led by `fwrite`, `fread`, `getenv`, `fclose`, `fopen`, `time`, `fseek`,
+  `pthread_mutex_lock`, `pthread_mutex_unlock`, `fprintf`, `ftell`, and
+  `gettimeofday`.
 
 The first POSIX reduction replaces Pdfium's filename-based file access and
 folder enumeration with wasm-only unavailable implementations. This removes
@@ -154,8 +154,17 @@ FreeType now uses `ftsystem_wasm.c`, which preserves allocator hooks but makes
 pathname-backed `FT_Stream_Open()` unavailable. Embedded and memory-backed font
 loading remain the browser path.
 
+The third POSIX reduction replaces Abseil's `sysinfo.cc` and
+`seed_material.cc` with wasm-only sources. The sysinfo replacement reports a
+single-threaded browser shape, while the seed-material replacement keeps
+Abseil's seed mixing helper but exposes no operating-system entropy source.
+That removes Abseil's `/dev/urandom` and CPU/proc probes from the archive. If
+Pdfium or a dependency later relies on Abseil random seeding at runtime, the
+final browser integration should inject entropy from Rust/JavaScript instead
+of pretending a POSIX entropy device exists.
+
 The next phase is reducing or isolating the remaining POSIX-facing objects
 before attempting to link the archive from Rust. The first places to inspect are
-Abseil time/sysinfo/seed helpers, zlib gz file helpers, LittleCMS file/debug
-helpers, ICU data/timezone helpers, OpenJPEG file/debug helpers, and
+Abseil time-zone helpers, zlib gz file helpers, LittleCMS file/debug helpers,
+ICU data/timezone helpers, OpenJPEG file/debug helpers, and
 `fx_random.o`'s `getpid` / `gettimeofday` seed path.
