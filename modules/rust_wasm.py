@@ -36,10 +36,13 @@ def run_task_patch():
     _patch_fxge_config(source_dir)
     _patch_icu_config(source_dir)
     _patch_freetype_config(source_dir)
+    _patch_freetype_sources(source_dir)
     _patch_abseil_config(source_dir)
     _write_freetype_wasm_stdlib(source_dir)
+    _write_freetype_wasm_system(source_dir)
     _write_abseil_wasm_debugging(source_dir)
     _write_fxcrt_wasm_files(source_dir)
+    _write_fxge_wasm_platform(source_dir)
     _write_rust_wasm_setjmp_header(source_dir)
     _write_rust_wasm_config(source_dir)
     _write_rust_wasm_toolchain(source_dir)
@@ -647,20 +650,31 @@ def _patch_fxcrt_config(source_dir):
 # -----------------------------------------------------------------------------
 def _patch_fxge_config(source_dir):
     source_file = os.path.join(source_dir, "core", "fxge", "BUILD.gn")
-    line_content = "if (is_linux || is_chromeos || is_wasm) {"
-    line_number = f.get_file_line_number_with_content(
-        source_file, line_content, strip=True
-    )
 
-    if line_number:
+    if f.file_has_content(source_file, 'sources += [ "wasm/fx_wasm_impl.cpp" ]'):
         l.bullet("Skipped: rust wasm fxge", l.PURPLE)
         return
 
-    f.replace_in_file(
-        source_file,
-        "if (is_linux || is_chromeos) {",
-        "if (is_linux || is_chromeos || is_wasm) {",
-    )
+    replacement = """  if (is_wasm) {
+    sources -= [
+      "cfx_folderfontinfo.cpp",
+      "cfx_folderfontinfo.h",
+    ]
+    sources += [ "wasm/fx_wasm_impl.cpp" ]
+  } else if (is_linux || is_chromeos) {
+    sources += [ "linux/fx_linux_impl.cpp" ]
+  }"""
+
+    if f.file_has_content(source_file, "if (is_linux || is_chromeos || is_wasm) {"):
+        source = """  if (is_linux || is_chromeos || is_wasm) {
+    sources += [ "linux/fx_linux_impl.cpp" ]
+  }"""
+    else:
+        source = """  if (is_linux || is_chromeos) {
+    sources += [ "linux/fx_linux_impl.cpp" ]
+  }"""
+
+    f.replace_in_file(source_file, source, replacement)
     l.bullet("Applied: rust wasm fxge", l.GREEN)
 
 
@@ -718,12 +732,11 @@ def _patch_icu_config(source_dir):
 # -----------------------------------------------------------------------------
 def _patch_freetype_config(source_dir):
     source_file = os.path.join(source_dir, "third_party", "BUILD.gn")
-    line_content = 'FT_CONFIG_STANDARD_LIBRARY_H="freetype-custom-config/ftstdlib-wasm.h"'
-    line_number = f.get_file_line_number_with_content(
-        source_file, line_content, strip=True
-    )
 
-    if line_number:
+    if f.file_has_content(
+        source_file,
+        '"FT_CONFIG_STANDARD_LIBRARY_H=\\"freetype-custom-config/ftstdlib-wasm.h\\"",',
+    ):
         l.bullet("Skipped: rust wasm FreeType", l.PURPLE)
         return
 
@@ -751,6 +764,34 @@ def _patch_freetype_config(source_dir):
 
     f.replace_in_file(source_file, source, target)
     l.bullet("Applied: rust wasm FreeType", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_freetype_sources(source_dir):
+    source_file = os.path.join(source_dir, "third_party", "BUILD.gn")
+
+    if f.file_has_content(
+        source_file, '"//third_party/freetype/src/src/base/ftsystem_wasm.c"'
+    ):
+        l.bullet("Skipped: rust wasm FreeType sources", l.PURPLE)
+        return
+
+    source = """      "//third_party/freetype/src/src/base/ftsystem.c",
+      "//third_party/freetype/src/src/cff/cff.c","""
+
+    target = """      "//third_party/freetype/src/src/base/ftsystem.c",
+      "//third_party/freetype/src/src/cff/cff.c",
+    ]
+
+    if (current_os == "wasm32") {
+      sources -= [ "//third_party/freetype/src/src/base/ftsystem.c" ]
+      sources += [ "//third_party/freetype/src/src/base/ftsystem_wasm.c" ]
+    }
+
+    sources += ["""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm FreeType sources", l.GREEN)
 
 
 # -----------------------------------------------------------------------------
@@ -987,6 +1028,91 @@ std::unique_ptr<FX_Folder> FX_Folder::OpenFolder(const ByteString& path) {
 
 
 # -----------------------------------------------------------------------------
+def _write_fxge_wasm_platform(source_dir):
+    source_file = os.path.join(source_dir, "core", "fxge", "wasm", "fx_wasm_impl.cpp")
+
+    content = """// Copyright 2026 The PDFium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <memory>
+
+#include "core/fxcrt/bytestring.h"
+#include "core/fxcrt/fx_codepage_forward.h"
+#include "core/fxge/cfx_gemodule.h"
+#include "core/fxge/systemfontinfo_iface.h"
+
+namespace {
+
+class CFX_WasmFontInfo final : public SystemFontInfoIface {
+ public:
+  void EnumFontList(CFX_FontMapper* pMapper) override { (void)pMapper; }
+
+  void* MapFont(int weight,
+                bool bItalic,
+                FX_Charset charset,
+                int pitch_family,
+                const ByteString& face) override {
+    (void)weight;
+    (void)bItalic;
+    (void)charset;
+    (void)pitch_family;
+    (void)face;
+    return nullptr;
+  }
+
+  void* GetFont(const ByteString& face) override {
+    (void)face;
+    return nullptr;
+  }
+
+  size_t GetFontData(void* hFont,
+                     uint32_t table,
+                     pdfium::span<uint8_t> buffer) override {
+    (void)hFont;
+    (void)table;
+    (void)buffer;
+    return 0;
+  }
+
+  bool GetFaceName(void* hFont, ByteString* name) override {
+    (void)hFont;
+    (void)name;
+    return false;
+  }
+
+  bool GetFontCharset(void* hFont, FX_Charset* charset) override {
+    (void)hFont;
+    (void)charset;
+    return false;
+  }
+
+  void DeleteFont(void* hFont) override { (void)hFont; }
+};
+
+class CWasmPlatform final : public CFX_GEModule::PlatformIface {
+ public:
+  void Init() override {}
+
+  std::unique_ptr<SystemFontInfoIface> CreateDefaultSystemFontInfo() override {
+    return std::make_unique<CFX_WasmFontInfo>();
+  }
+};
+
+}  // namespace
+
+// static
+std::unique_ptr<CFX_GEModule::PlatformIface>
+CFX_GEModule::PlatformIface::Create() {
+  return std::make_unique<CWasmPlatform>();
+}
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm fxge platform", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
 def _write_freetype_wasm_stdlib(source_dir):
     source_file = os.path.join(
         source_dir,
@@ -1075,6 +1201,126 @@ static inline void ft_wasm_longjmp(ft_jmp_buf buffer, int value) {
 
     f.set_file_content(source_file, content)
     l.bullet("Applied: rust wasm FreeType stdlib", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_freetype_wasm_system(source_dir):
+    source_file = os.path.join(
+        source_dir, "third_party", "freetype", "src", "src", "base", "ftsystem_wasm.c"
+    )
+
+    content = """/****************************************************************************
+ *
+ * ftsystem_wasm.c
+ *
+ *   Browser-oriented FreeType low-level system interface for Pdfium.
+ *
+ */
+
+#include <ft2build.h>
+#include FT_CONFIG_CONFIG_H
+#include <freetype/internal/ftdebug.h>
+#include <freetype/internal/ftobjs.h>
+#include <freetype/internal/ftstream.h>
+#include <freetype/fterrors.h>
+#include <freetype/ftsystem.h>
+#include <freetype/fttypes.h>
+
+FT_CALLBACK_DEF( void* )
+ft_alloc( FT_Memory  memory,
+          long       size )
+{
+  FT_UNUSED( memory );
+
+  return ft_smalloc( (size_t)size );
+}
+
+FT_CALLBACK_DEF( void* )
+ft_realloc( FT_Memory  memory,
+            long       cur_size,
+            long       new_size,
+            void*      block )
+{
+  FT_UNUSED( memory );
+  FT_UNUSED( cur_size );
+
+  return ft_srealloc( block, (size_t)new_size );
+}
+
+FT_CALLBACK_DEF( void )
+ft_free( FT_Memory  memory,
+         void*      block )
+{
+  FT_UNUSED( memory );
+
+  ft_sfree( block );
+}
+
+#ifndef FT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT
+
+FT_BASE_DEF( FT_Error )
+FT_Stream_Open( FT_Stream    stream,
+                const char*  filepathname )
+{
+  if ( !stream )
+    return FT_THROW( Invalid_Stream_Handle );
+
+  stream->descriptor.pointer = NULL;
+  stream->pathname.pointer   = (char*)filepathname;
+  stream->base               = NULL;
+  stream->pos                = 0;
+  stream->read               = NULL;
+  stream->close              = NULL;
+  stream->size               = 0;
+
+  return FT_THROW( Cannot_Open_Resource );
+}
+
+#endif /* !FT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT */
+
+#ifdef FT_DEBUG_MEMORY
+
+extern FT_Int
+ft_mem_debug_init( FT_Memory  memory );
+
+extern void
+ft_mem_debug_done( FT_Memory  memory );
+
+#endif
+
+FT_BASE_DEF( FT_Memory )
+FT_New_Memory( void )
+{
+  FT_Memory  memory;
+
+
+  memory = (FT_Memory)ft_smalloc( sizeof ( *memory ) );
+  if ( memory )
+  {
+    memory->user    = NULL;
+    memory->alloc   = ft_alloc;
+    memory->realloc = ft_realloc;
+    memory->free    = ft_free;
+#ifdef FT_DEBUG_MEMORY
+    ft_mem_debug_init( memory );
+#endif
+  }
+
+  return memory;
+}
+
+FT_BASE_DEF( void )
+FT_Done_Memory( FT_Memory  memory )
+{
+#ifdef FT_DEBUG_MEMORY
+  ft_mem_debug_done( memory );
+#endif
+  ft_sfree( memory );
+}
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm FreeType system", l.GREEN)
 
 
 # -----------------------------------------------------------------------------

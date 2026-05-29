@@ -130,8 +130,8 @@ obj/libpdfium.a`.
 
 The archive inspection currently reports:
 
-- `obj/libpdfium.a` is produced with 921 objects.
-- The archive has 19,280 defined symbols and 16,002 raw undefined references.
+- `obj/libpdfium.a` is produced with 920 objects.
+- The archive has 19,256 defined symbols and 15,952 raw undefined references.
 - After subtracting symbols defined by other objects in the archive, 265
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
@@ -147,8 +147,15 @@ folder enumeration with wasm-only unavailable implementations. This removes
 consumers should use memory/callback document APIs instead of
 `FPDF_LoadDocument()` filename paths.
 
+The second POSIX reduction gives wasm its own PDFium graphics platform and
+FreeType system layer. The wasm platform returns a no-system-font provider, so
+the build no longer includes `cfx_folderfontinfo.o` or `fx_linux_impl.o`.
+FreeType now uses `ftsystem_wasm.c`, which preserves allocator hooks but makes
+pathname-backed `FT_Stream_Open()` unavailable. Embedded and memory-backed font
+loading remain the browser path.
+
 The next phase is reducing or isolating the remaining POSIX-facing objects
 before attempting to link the archive from Rust. The first places to inspect are
-font discovery (`cfx_folderfontinfo.o`), FreeType file helpers (`ftsystem.o`),
 Abseil time/sysinfo/seed helpers, zlib gz file helpers, LittleCMS file/debug
-helpers, and `fx_random.o`'s `getpid` / `gettimeofday` seed path.
+helpers, ICU data/timezone helpers, OpenJPEG file/debug helpers, and
+`fx_random.o`'s `getpid` / `gettimeofday` seed path.
