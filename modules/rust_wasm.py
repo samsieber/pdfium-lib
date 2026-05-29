@@ -2231,7 +2231,13 @@ def _write_freetype_wasm_stdlib(source_dir):
 #define ft_srealloc realloc
 
 #define ft_strtol strtol
-#define ft_getenv getenv
+
+static inline char* ft_wasm_getenv(const char* name) {
+  (void)name;
+  return NULL;
+}
+
+#define ft_getenv ft_wasm_getenv
 
 typedef int ft_jmp_buf[1];
 

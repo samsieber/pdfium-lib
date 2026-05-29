@@ -131,14 +131,13 @@ obj/libpdfium.a`.
 The archive inspection currently reports:
 
 - `obj/libpdfium.a` is produced with 918 objects.
-- The archive has 19,160 defined symbols and 15,824 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 229
+- The archive has 19,160 defined symbols and 15,821 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 228
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
-- The main browser-specific risk is the 5 browser-sensitive POSIX symbols,
-  led by `fwrite`, `getenv`, `pthread_mutex_lock`, `pthread_mutex_unlock`, and
-  `fprintf`.
+- The main browser-specific risk is the 4 browser-sensitive POSIX symbols:
+  `fwrite`, `pthread_mutex_lock`, `pthread_mutex_unlock`, and `fprintf`.
 
 The first POSIX reduction replaces Pdfium's filename-based file access and
 folder enumeration with wasm-only unavailable implementations. This removes
@@ -221,6 +220,13 @@ that locale, timezone, and data setup must be provided explicitly by the final
 Rust/JavaScript integration. This removes the `putil.o` and `umapfile.o`
 origins from the archive boundary.
 
+The eleventh POSIX reduction updates the FreeType wasm standard-library
+override so `ft_getenv()` always reports no environment variables. FreeType's
+environment-property support is not a browser integration surface, and the
+final Rust/JavaScript wrapper should pass any required rendering policy
+explicitly. This removes the `ftinit.o` `getenv` origin from the archive
+boundary.
+
 The next phase is reducing or isolating the remaining POSIX-facing objects
-before attempting to link the archive from Rust. The first places to inspect are
-Abseil logging/threading fallbacks and FreeType's remaining environment probe.
+before attempting to link the archive from Rust. The remaining browser-sensitive
+origins are Abseil logging and pthread waiter fallbacks.
