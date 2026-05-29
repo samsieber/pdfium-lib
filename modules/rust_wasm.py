@@ -52,6 +52,7 @@ def run_task_patch():
     _write_abseil_wasm_base(source_dir)
     _write_abseil_wasm_random(source_dir)
     _write_abseil_wasm_time(source_dir)
+    _write_icu_wasm_stubs(source_dir)
     _write_lcms_wasm_stubs(source_dir)
     _write_openjpeg_wasm_stubs(source_dir)
     _write_libjpeg_wasm_stubs(source_dir)
@@ -729,12 +730,8 @@ def _patch_fxge_config(source_dir):
 # -----------------------------------------------------------------------------
 def _patch_icu_config(source_dir):
     source_file = os.path.join(source_dir, "third_party", "icu", "BUILD.gn")
-    line_content = '"U_HAVE_MMAP=0",'
-    line_number = f.get_file_line_number_with_content(
-        source_file, line_content, strip=True
-    )
 
-    if line_number:
+    if f.file_has_content(source_file, '"source/common/icu_wasm_stubs.cpp"'):
         l.bullet("Skipped: rust wasm ICU", l.PURPLE)
         return
 
@@ -744,9 +741,18 @@ def _patch_icu_config(source_dir):
     if wasm_block_line:
         f.replace_in_file(
             source_file,
-            '"U_HAVE_TZNAME=0",',
-            '"U_HAVE_TZNAME=0",\n      "U_HAVE_MMAP=0",',
+            '      "U_HAVE_MMAP=0",',
+            """      "U_HAVE_MMAP=0",
+      "getenv=pdfium_wasm_icu_getenv",
+      "gettimeofday=pdfium_wasm_icu_gettimeofday",
+      "time=pdfium_wasm_icu_time",
+      "fopen=pdfium_wasm_icu_fopen",
+      "fread=pdfium_wasm_icu_fread",
+      "fclose=pdfium_wasm_icu_fclose",
+      "fseek=pdfium_wasm_icu_fseek",
+      "ftell=pdfium_wasm_icu_ftell",""",
         )
+        _patch_icu_wasm_source(source_file)
         l.bullet("Applied: rust wasm ICU", l.GREEN)
         return
 
@@ -769,12 +775,42 @@ def _patch_icu_config(source_dir):
       "U_HAVE_TIMEZONE=0",
       "U_HAVE_TZNAME=0",
       "U_HAVE_MMAP=0",
+      "getenv=pdfium_wasm_icu_getenv",
+      "gettimeofday=pdfium_wasm_icu_gettimeofday",
+      "time=pdfium_wasm_icu_time",
+      "fopen=pdfium_wasm_icu_fopen",
+      "fread=pdfium_wasm_icu_fread",
+      "fclose=pdfium_wasm_icu_fclose",
+      "fseek=pdfium_wasm_icu_fseek",
+      "ftell=pdfium_wasm_icu_ftell",
     ]
   }
 }"""
 
     f.replace_in_file(source_file, source, target)
+    _patch_icu_wasm_source(source_file)
     l.bullet("Applied: rust wasm ICU", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_icu_wasm_source(source_file):
+    source = """    if (icu_use_data_file && icu_use_stub_data) {
+      sources += [ "source/stubdata/stubdata.cpp" ]
+    }
+
+    defines += [ "U_ICUDATAENTRY_IN_COMMON" ]"""
+
+    target = """    if (icu_use_data_file && icu_use_stub_data) {
+      sources += [ "source/stubdata/stubdata.cpp" ]
+    }
+
+    if (current_os == "wasm32") {
+      sources += [ "source/common/icu_wasm_stubs.cpp" ]
+    }
+
+    defines += [ "U_ICUDATAENTRY_IN_COMMON" ]"""
+
+    f.replace_in_file(source_file, source, target)
 
 
 # -----------------------------------------------------------------------------
@@ -1546,6 +1582,95 @@ ABSL_NAMESPACE_END
     f.set_file_content(time_zone_if_file, time_zone_if_content)
     f.set_file_content(time_zone_lookup_file, time_zone_lookup_content)
     l.bullet("Applied: rust wasm Abseil time", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_icu_wasm_stubs(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "icu",
+        "source",
+        "common",
+        "icu_wasm_stubs.cpp",
+    )
+
+    content = """#include <stddef.h>
+#include <stdio.h>
+#include <sys/time.h>
+#include <time.h>
+
+#undef getenv
+#undef gettimeofday
+#undef time
+#undef fopen
+#undef fread
+#undef fclose
+#undef fseek
+#undef ftell
+
+extern "C" {
+
+char* pdfium_wasm_icu_getenv(const char* name) {
+  (void)name;
+  return nullptr;
+}
+
+int pdfium_wasm_icu_gettimeofday(struct timeval* tv, void* timezone) {
+  (void)timezone;
+  if (tv != nullptr) {
+    tv->tv_sec = 0;
+    tv->tv_usec = 0;
+  }
+  return 0;
+}
+
+time_t pdfium_wasm_icu_time(time_t* timer) {
+  if (timer != nullptr) {
+    *timer = 0;
+  }
+  return 0;
+}
+
+FILE* pdfium_wasm_icu_fopen(const char* filename, const char* mode) {
+  (void)filename;
+  (void)mode;
+  return nullptr;
+}
+
+size_t pdfium_wasm_icu_fread(void* buffer,
+                             size_t size,
+                             size_t count,
+                             FILE* stream) {
+  (void)buffer;
+  (void)size;
+  (void)count;
+  (void)stream;
+  return 0;
+}
+
+int pdfium_wasm_icu_fclose(FILE* stream) {
+  (void)stream;
+  return 0;
+}
+
+int pdfium_wasm_icu_fseek(FILE* stream, long offset, int origin) {
+  (void)stream;
+  (void)offset;
+  (void)origin;
+  return -1;
+}
+
+long pdfium_wasm_icu_ftell(FILE* stream) {
+  (void)stream;
+  return -1L;
+}
+
+}  // extern "C"
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm ICU stubs", l.GREEN)
 
 
 # -----------------------------------------------------------------------------

@@ -130,16 +130,15 @@ obj/libpdfium.a`.
 
 The archive inspection currently reports:
 
-- `obj/libpdfium.a` is produced with 917 objects.
-- The archive has 19,152 defined symbols and 15,824 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 236
+- `obj/libpdfium.a` is produced with 918 objects.
+- The archive has 19,160 defined symbols and 15,824 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 229
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
-- The main browser-specific risk is the 12 browser-sensitive POSIX symbols,
-  led by `getenv`, `fwrite`, `pthread_mutex_lock`, `pthread_mutex_unlock`,
-  `fprintf`, `gettimeofday`, `time`, `fclose`, `fopen`, `fread`, `fseek`, and
-  `ftell`.
+- The main browser-specific risk is the 5 browser-sensitive POSIX symbols,
+  led by `fwrite`, `getenv`, `pthread_mutex_lock`, `pthread_mutex_unlock`, and
+  `fprintf`.
 
 The first POSIX reduction replaces Pdfium's filename-based file access and
 folder enumeration with wasm-only unavailable implementations. This removes
@@ -213,7 +212,15 @@ source/destination managers or stderr printing. This removes the
 `jdatadst.o`, `jdatasrc.o`, and `jerror.o` origins from the archive boundary
 while preserving `jpeg_mem_src()` and `jpeg_mem_dest()`.
 
+The tenth POSIX reduction redirects ICU's remaining environment, time, and file
+mapping helpers to wasm-local stubs. ICU still builds in data-file mode for the
+probe, but filename-backed fallback mapping now fails locally instead of
+requiring browser-inaccessible `FILE*` I/O. The environment and clock stubs
+return no variables and epoch time, matching the existing browser assumption
+that locale, timezone, and data setup must be provided explicitly by the final
+Rust/JavaScript integration. This removes the `putil.o` and `umapfile.o`
+origins from the archive boundary.
+
 The next phase is reducing or isolating the remaining POSIX-facing objects
 before attempting to link the archive from Rust. The first places to inspect are
-ICU data/timezone helpers, Abseil logging/threading fallbacks, and FreeType's
-remaining environment probe.
+Abseil logging/threading fallbacks and FreeType's remaining environment probe.
