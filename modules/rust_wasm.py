@@ -33,6 +33,7 @@ def run_task_patch():
     _patch_compiler_config(source_dir)
     _patch_emscripten_link_flags(source_dir)
     _patch_fxcrt_config(source_dir)
+    _patch_fxcrt_time_random_config(source_dir)
     _patch_fxge_config(source_dir)
     _patch_icu_config(source_dir)
     _patch_freetype_config(source_dir)
@@ -52,6 +53,7 @@ def run_task_patch():
     _write_abseil_wasm_time(source_dir)
     _write_lcms_wasm_stubs(source_dir)
     _write_openjpeg_wasm_stubs(source_dir)
+    _write_fxcrt_wasm_time_random(source_dir)
     _write_fxcrt_wasm_files(source_dir)
     _write_fxge_wasm_platform(source_dir)
     _write_rust_wasm_setjmp_header(source_dir)
@@ -656,6 +658,39 @@ def _patch_fxcrt_config(source_dir):
 
     f.replace_in_file(source_file, source, replacement)
     l.bullet("Applied: rust wasm fxcrt", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_fxcrt_time_random_config(source_dir):
+    source_file = os.path.join(source_dir, "core", "fxcrt", "BUILD.gn")
+
+    if f.file_has_content(source_file, '"fx_wasm_time_random.cpp"'):
+        l.bullet("Skipped: rust wasm fxcrt time/random", l.PURPLE)
+        return
+
+    source = """  if (is_wasm) {
+    sources += [
+      "cfx_fileaccess_wasm.cpp",
+      "fx_folder_wasm.cpp",
+    ]
+  }"""
+
+    target = """  if (is_wasm) {
+    defines = [
+      "getpid=pdfium_wasm_fxcrt_getpid",
+      "gettimeofday=pdfium_wasm_fxcrt_gettimeofday",
+      "time=pdfium_wasm_fxcrt_time",
+      "localtime=pdfium_wasm_fxcrt_localtime",
+    ]
+    sources += [
+      "cfx_fileaccess_wasm.cpp",
+      "fx_folder_wasm.cpp",
+      "fx_wasm_time_random.cpp",
+    ]
+  }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm fxcrt time/random", l.GREEN)
 
 
 # -----------------------------------------------------------------------------
@@ -1667,6 +1702,64 @@ int pdfium_wasm_openjpeg_fprintf(FILE* stream, const char* format, ...) {
 
     f.set_file_content(source_file, content)
     l.bullet("Applied: rust wasm OpenJPEG stubs", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_fxcrt_wasm_time_random(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "core",
+        "fxcrt",
+        "fx_wasm_time_random.cpp",
+    )
+
+    content = """// Copyright 2026 The PDFium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <sys/time.h>
+#include <time.h>
+
+#undef getpid
+#undef gettimeofday
+#undef time
+#undef localtime
+
+extern "C" {
+
+int pdfium_wasm_fxcrt_getpid() {
+  return 1;
+}
+
+int pdfium_wasm_fxcrt_gettimeofday(struct timeval* tv, void* timezone) {
+  (void)timezone;
+  if (tv) {
+    tv->tv_sec = 0;
+    tv->tv_usec = 0;
+  }
+  return 0;
+}
+
+time_t pdfium_wasm_fxcrt_time(time_t* timer) {
+  if (timer) {
+    *timer = 0;
+  }
+  return 0;
+}
+
+struct tm* pdfium_wasm_fxcrt_localtime(const time_t* timer) {
+  static struct tm epoch;
+  (void)timer;
+  epoch.tm_year = 70;
+  epoch.tm_mday = 1;
+  return &epoch;
+}
+
+}  // extern "C"
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm fxcrt time/random", l.GREEN)
 
 
 # -----------------------------------------------------------------------------
