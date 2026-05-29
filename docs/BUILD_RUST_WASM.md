@@ -1,8 +1,15 @@
 # Build for Rust static WASM
 
 This is an experimental path for producing a `libpdfium.a` intended to link
-into Rust's `wasm32-unknown-unknown` target. It is intentionally separate from
-the existing Emscripten WASM flow documented in `BUILD_WASM.md`.
+into Rust's browser-oriented `wasm32-unknown-unknown` target. It is
+intentionally separate from the existing Emscripten WASM flow documented in
+`BUILD_WASM.md`.
+
+The intended final consumer is a `wasm-pack` / `wasm-bindgen` browser build.
+Do not switch the final Rust crate to `wasm32-wasip1` for that path. WASI can be
+useful as a temporary C/C++ sysroot probe, but any final archive must link into
+the browser module without `wasi_snapshot_preview1` imports unless a deliberate
+WASI polyfill layer is added.
 
 The current prototype stops after `gn gen`. That is deliberate: the generated
 target graph and unresolved symbols need to be reviewed before running Ninja.
@@ -49,6 +56,10 @@ python3 make.py analyze-rust-wasm
   and accidental Emscripten references before attempting compilation.
 - Accepts `RUST_WASM_SYSROOT=/path/to/sysroot` when C/C++ headers and libc-like
   symbols are needed by Pdfium's C/C++ dependencies.
+- Accepts `RUST_WASM_SYSROOT_TARGET=wasm32-wasip1` for a WASI headers probe
+  while still compiling objects as `wasm32-unknown-unknown`.
+- Scans generated build files for `wasi_snapshot_preview1` so a WASI sysroot
+  experiment does not silently become a WASI runtime dependency.
 
 ## Review checkpoints before compiling
 
@@ -63,6 +74,22 @@ python3 make.py analyze-rust-wasm
 
 The pure `wasm32-unknown-unknown` target does not provide C library headers.
 The first compile attempt currently fails in `third_party/libjpeg_turbo` on
-`#include <stdlib.h>`. The next prototype decision is whether to use a WASI-like
-sysroot, an Emscripten sysroot without the JS packaging layer, or a small custom
+`#include <stdlib.h>`.
+
+For a browser build, a WASI sysroot is only valid as a diagnostic step if the
+resulting static archive can still be linked into a `wasm32-unknown-unknown`
+Rust module without WASI imports. The next prototype decision is whether to use
+a WASI-like sysroot to enumerate missing libc/C++ assumptions, an Emscripten
+sysroot as headers-only input without the JS packaging layer, or a small custom
 libc/header shim tailored to the Pdfium subset.
+
+## Browser compatibility rule
+
+The final `wasmpdf` artifact should pass all of these checks:
+
+- Rust target remains `wasm32-unknown-unknown`.
+- `wasm-bindgen` can process the final `.wasm`.
+- Generated imports do not include `wasi_snapshot_preview1`.
+- Generated imports do not require Emscripten runtime modules.
+- PDFium file access uses memory/callback APIs rather than browser-inaccessible
+  POSIX filesystem calls.

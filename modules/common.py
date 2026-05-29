@@ -115,6 +115,7 @@ def get_build_args(
     enable_v8=False,
     rust_target=None,
     rust_wasm_sysroot=None,
+    rust_wasm_sysroot_target=None,
 ):
     args = []
 
@@ -184,6 +185,8 @@ def get_build_args(
             args.append(f'rust_wasm_target="{rust_target}"')
         if rust_wasm_sysroot:
             args.append(f'rust_wasm_sysroot="{rust_wasm_sysroot}"')
+        if rust_wasm_sysroot_target:
+            args.append(f'rust_wasm_sysroot_target="{rust_wasm_sysroot_target}"')
 
     if libc == "musl":
         args.append("is_musl=true")

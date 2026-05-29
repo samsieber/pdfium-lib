@@ -61,6 +61,7 @@ def run_task_build():
                 target["target_cpu"],
                 rust_target=target["rust_target"],
                 rust_wasm_sysroot=_get_rust_wasm_sysroot(target),
+                rust_wasm_sysroot_target=_get_rust_wasm_sysroot_target(target),
             )
             args_str = " ".join(args)
 
@@ -156,6 +157,9 @@ def run_task_analyze():
             l.colored("Generated Ninja Emscripten linker settings...", l.YELLOW)
             _run_generated_file_scan(full_out_dir, "ALLOW_MEMORY_GROWTH")
             _run_generated_file_scan(full_out_dir, "LLD_REPORT_UNDEFINED")
+
+            l.colored("Generated Ninja WASI imports...", l.YELLOW)
+            _run_generated_file_scan(full_out_dir, "wasi_snapshot_preview1")
 
     l.ok()
 
@@ -373,6 +377,7 @@ def _write_rust_wasm_config(source_dir):
     content = """declare_args() {
   rust_wasm_target = "wasm32-unknown-unknown"
   rust_wasm_sysroot = ""
+  rust_wasm_sysroot_target = ""
 }
 
 config("compiler") {
@@ -403,7 +408,17 @@ config("compiler") {
 
   if (rust_wasm_sysroot != "") {
     cflags += [ "--sysroot=$rust_wasm_sysroot" ]
-    cflags_cc += [ "--sysroot=$rust_wasm_sysroot" ]
+    cflags_c = [
+      "-isystem",
+      "$rust_wasm_sysroot/include/$rust_wasm_sysroot_target",
+    ]
+    cflags_cc += [
+      "-nostdinc++",
+      "-isystem",
+      "$rust_wasm_sysroot/include/$rust_wasm_sysroot_target/c++/v1",
+      "-isystem",
+      "$rust_wasm_sysroot/include/$rust_wasm_sysroot_target",
+    ]
     ldflags += [ "--sysroot=$rust_wasm_sysroot" ]
   }
 }"""
@@ -423,6 +438,16 @@ def _get_rust_wasm_sysroot(target):
 
 
 # -----------------------------------------------------------------------------
+def _get_rust_wasm_sysroot_target(target):
+    sysroot_target_env = target.get("sysroot_target_env")
+
+    if not sysroot_target_env:
+        return None
+
+    return os.getenv(sysroot_target_env)
+
+
+# -----------------------------------------------------------------------------
 def _write_rust_wasm_toolchain(source_dir):
     source_file = os.path.join(
         source_dir, "build", "toolchain", "rust_wasm", "BUILD.gn"
@@ -431,11 +456,11 @@ def _write_rust_wasm_toolchain(source_dir):
     content = """import("//build/toolchain/gcc_toolchain.gni")
 
 declare_args() {
-  rust_wasm_clang = "clang"
-  rust_wasm_clangxx = "clang++"
-  rust_wasm_ar = "llvm-ar"
-  rust_wasm_ld = "wasm-ld"
-  rust_wasm_readelf = "llvm-readelf"
+  rust_wasm_clang = rebase_path("//third_party/llvm-build/Release+Asserts/bin/clang", root_build_dir)
+  rust_wasm_clangxx = rebase_path("//third_party/llvm-build/Release+Asserts/bin/clang++", root_build_dir)
+  rust_wasm_ar = rebase_path("//third_party/llvm-build/Release+Asserts/bin/llvm-ar", root_build_dir)
+  rust_wasm_ld = rebase_path("//third_party/llvm-build/Release+Asserts/bin/wasm-ld", root_build_dir)
+  rust_wasm_readelf = rebase_path("//third_party/llvm-build/Release+Asserts/bin/llvm-readelf", root_build_dir)
 }
 
 gcc_toolchain("wasm") {

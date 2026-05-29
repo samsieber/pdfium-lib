@@ -91,5 +91,6 @@ targets_rust_wasm = [
         "pdfium_os": "wasm32",
         "rust_target": "wasm32-unknown-unknown",
         "sysroot_env": "RUST_WASM_SYSROOT",
+        "sysroot_target_env": "RUST_WASM_SYSROOT_TARGET",
     },
 ]
