@@ -130,16 +130,16 @@ obj/libpdfium.a`.
 
 The archive inspection currently reports:
 
-- `obj/libpdfium.a` is produced with 913 objects.
-- The archive has 19,123 defined symbols and 15,832 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 244
+- `obj/libpdfium.a` is produced with 914 objects.
+- The archive has 19,133 defined symbols and 15,826 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 241
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
-- The main browser-specific risk is the 15 browser-sensitive POSIX symbols,
-  led by `fwrite`, `fread`, `time`, `fclose`, `fopen`, `getenv`, `fseek`,
-  `pthread_mutex_lock`, `pthread_mutex_unlock`, `fprintf`, `ftell`, and
-  `gettimeofday`.
+- The main browser-specific risk is the 14 browser-sensitive POSIX symbols,
+  led by `fwrite`, `getenv`, `fprintf`, `fread`, `time`, `gettimeofday`,
+  `fclose`, `fopen`, `pthread_mutex_lock`, `pthread_mutex_unlock`, and
+  `fseek`.
 
 The first POSIX reduction replaces Pdfium's filename-based file access and
 folder enumeration with wasm-only unavailable implementations. This removes
@@ -179,8 +179,18 @@ the checkout has no non-zlib users of `gzopen()`, `gzread()`, `gzwrite()`, or
 removes the remaining archive references to `open`, `read`, `write`, `close`,
 and `lseek`.
 
+The sixth POSIX reduction makes LittleCMS explicitly single-threaded and
+redirects its file/time helpers to wasm-local stubs. Pdfium opens ICC profiles
+from memory and creates built-in profiles, so the browser path does not need
+LittleCMS file profiles, CGATS text-chart files, PostScript timestamps, or
+pthread-backed mutexes. The stubs make file operations fail, return an epoch
+timestamp for LittleCMS-generated text metadata, and preserve memory-backed
+profile loading. This removes the LittleCMS-origin `fopen`, `fread`, `fwrite`,
+`fclose`, `fseek`, `ftell`, `remove`, `pthread_mutex_*`, `time`, `gmtime`, and
+`ctime` references from the archive boundary.
+
 The next phase is reducing or isolating the remaining POSIX-facing objects
 before attempting to link the archive from Rust. The first places to inspect are
-LittleCMS file/debug helpers, ICU data/timezone helpers, OpenJPEG file/debug
-helpers, and Pdfium's remaining `fx_extension.o` time call plus
+ICU data/timezone helpers, OpenJPEG file/debug helpers, libjpeg destination
+flushing, and Pdfium's remaining `fx_extension.o` time call plus
 `fx_random.o`'s `getpid` / `gettimeofday` seed path.

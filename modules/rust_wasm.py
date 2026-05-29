@@ -38,6 +38,7 @@ def run_task_patch():
     _patch_freetype_config(source_dir)
     _patch_freetype_sources(source_dir)
     _patch_zlib_config(source_dir)
+    _patch_lcms_config(source_dir)
     _patch_abseil_config(source_dir)
     _patch_abseil_base_config(source_dir)
     _patch_abseil_random_config(source_dir)
@@ -48,6 +49,7 @@ def run_task_patch():
     _write_abseil_wasm_base(source_dir)
     _write_abseil_wasm_random(source_dir)
     _write_abseil_wasm_time(source_dir)
+    _write_lcms_wasm_stubs(source_dir)
     _write_fxcrt_wasm_files(source_dir)
     _write_fxge_wasm_platform(source_dir)
     _write_rust_wasm_setjmp_header(source_dir)
@@ -831,6 +833,50 @@ def _patch_zlib_config(source_dir):
 
 
 # -----------------------------------------------------------------------------
+def _patch_lcms_config(source_dir):
+    source_file = os.path.join(source_dir, "third_party", "BUILD.gn")
+
+    if f.file_has_content(source_file, '"lcms/src/cms_wasm_stubs.c"'):
+        l.bullet("Skipped: rust wasm LittleCMS", l.PURPLE)
+        return
+
+    source = """  sources = [
+    "lcms/include/lcms2.h","""
+
+    target = """  defines = []
+  sources = [
+    "lcms/include/lcms2.h","""
+
+    f.replace_in_file(source_file, source, target)
+
+    source = """    "lcms/src/cmsxform.c",
+  ]"""
+
+    target = """    "lcms/src/cmsxform.c",
+  ]
+
+  if (current_os == "wasm32") {
+    defines += [
+      "CMS_NO_PTHREADS=1",
+      "fopen=pdfium_wasm_lcms_fopen",
+      "fread=pdfium_wasm_lcms_fread",
+      "fwrite=pdfium_wasm_lcms_fwrite",
+      "fclose=pdfium_wasm_lcms_fclose",
+      "fseek=pdfium_wasm_lcms_fseek",
+      "ftell=pdfium_wasm_lcms_ftell",
+      "remove=pdfium_wasm_lcms_remove",
+      "time=pdfium_wasm_lcms_time",
+      "gmtime=pdfium_wasm_lcms_gmtime",
+      "ctime=pdfium_wasm_lcms_ctime",
+    ]
+    sources += [ "lcms/src/cms_wasm_stubs.c" ]
+  }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm LittleCMS", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
 def _patch_abseil_config(source_dir):
     source_file = os.path.join(
         source_dir, "third_party", "abseil-cpp", "absl", "debugging", "BUILD.gn"
@@ -1372,6 +1418,106 @@ ABSL_NAMESPACE_END
     f.set_file_content(time_zone_if_file, time_zone_if_content)
     f.set_file_content(time_zone_lookup_file, time_zone_lookup_content)
     l.bullet("Applied: rust wasm Abseil time", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_lcms_wasm_stubs(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "lcms",
+        "src",
+        "cms_wasm_stubs.c",
+    )
+
+    content = """#include <stddef.h>
+#include <stdio.h>
+#include <time.h>
+
+#undef fopen
+#undef fread
+#undef fwrite
+#undef fclose
+#undef fseek
+#undef ftell
+#undef remove
+#undef time
+#undef gmtime
+#undef ctime
+
+FILE* pdfium_wasm_lcms_fopen(const char* filename, const char* mode) {
+  (void)filename;
+  (void)mode;
+  return NULL;
+}
+
+size_t pdfium_wasm_lcms_fread(void* buffer,
+                              size_t size,
+                              size_t count,
+                              FILE* stream) {
+  (void)buffer;
+  (void)size;
+  (void)count;
+  (void)stream;
+  return 0;
+}
+
+size_t pdfium_wasm_lcms_fwrite(const void* buffer,
+                               size_t size,
+                               size_t count,
+                               FILE* stream) {
+  (void)buffer;
+  (void)size;
+  (void)count;
+  (void)stream;
+  return 0;
+}
+
+int pdfium_wasm_lcms_fclose(FILE* stream) {
+  (void)stream;
+  return 0;
+}
+
+int pdfium_wasm_lcms_fseek(FILE* stream, long offset, int origin) {
+  (void)stream;
+  (void)offset;
+  (void)origin;
+  return -1;
+}
+
+long pdfium_wasm_lcms_ftell(FILE* stream) {
+  (void)stream;
+  return -1L;
+}
+
+int pdfium_wasm_lcms_remove(const char* filename) {
+  (void)filename;
+  return -1;
+}
+
+time_t pdfium_wasm_lcms_time(time_t* timer) {
+  if (timer != NULL) {
+    *timer = 0;
+  }
+  return 0;
+}
+
+struct tm* pdfium_wasm_lcms_gmtime(const time_t* timer) {
+  static struct tm epoch;
+  (void)timer;
+  epoch.tm_year = 70;
+  epoch.tm_mday = 1;
+  return &epoch;
+}
+
+char* pdfium_wasm_lcms_ctime(const time_t* timer) {
+  (void)timer;
+  return "Thu Jan  1 00:00:00 1970\\n";
+}
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm LittleCMS stubs", l.GREEN)
 
 
 # -----------------------------------------------------------------------------
