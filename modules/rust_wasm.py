@@ -45,12 +45,20 @@ def run_task_patch():
     _patch_abseil_config(source_dir)
     _patch_abseil_base_config(source_dir)
     _patch_abseil_random_config(source_dir)
+    _patch_abseil_random_hwaes_config(source_dir)
+    _patch_abseil_log_config(source_dir)
+    _patch_abseil_strings_config(source_dir)
+    _patch_abseil_synchronization_config(source_dir)
     _patch_abseil_time_config(source_dir)
     _write_freetype_wasm_stdlib(source_dir)
     _write_freetype_wasm_system(source_dir)
     _write_abseil_wasm_debugging(source_dir)
     _write_abseil_wasm_base(source_dir)
     _write_abseil_wasm_random(source_dir)
+    _write_abseil_wasm_random_hwaes(source_dir)
+    _write_abseil_wasm_log(source_dir)
+    _write_abseil_wasm_strings(source_dir)
+    _write_abseil_wasm_synchronization(source_dir)
     _write_abseil_wasm_time(source_dir)
     _write_icu_wasm_stubs(source_dir)
     _write_lcms_wasm_stubs(source_dir)
@@ -1045,12 +1053,8 @@ def _patch_abseil_config(source_dir):
     source_file = os.path.join(
         source_dir, "third_party", "abseil-cpp", "absl", "debugging", "BUILD.gn"
     )
-    line_content = '"internal/examine_stack_wasm.cc"'
-    line_number = f.get_file_line_number_with_content(
-        source_file, line_content, strip=True
-    )
 
-    if line_number:
+    if f.file_has_content(source_file, "internal/examine_stack_wasm.cc"):
         l.bullet("Skipped: rust wasm Abseil", l.PURPLE)
         return
 
@@ -1140,6 +1144,140 @@ def _patch_abseil_random_config(source_dir):
 
     f.replace_in_file(source_file, source, target)
     l.bullet("Applied: rust wasm Abseil random", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_abseil_random_hwaes_config(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "random",
+        "internal",
+        "BUILD.gn",
+    )
+
+    if f.file_has_content(source_file, '"randen_hwaes_wasm_stubs.cc"'):
+        l.bullet("Skipped: rust wasm Abseil random HWAES", l.PURPLE)
+        return
+
+    source = """  sources = [
+    "randen_hwaes.cc",
+    "randen_hwaes.h",
+  ]"""
+
+    target = """  sources = [
+    "randen_hwaes.cc",
+    "randen_hwaes.h",
+  ]
+  if (current_os == "wasm32") {
+    defines = [ "fprintf=pdfium_wasm_absl_random_fprintf" ]
+    sources += [ "randen_hwaes_wasm_stubs.cc" ]
+  }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm Abseil random HWAES", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_abseil_log_config(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "log",
+        "internal",
+        "BUILD.gn",
+    )
+
+    if f.file_has_content(source_file, '"globals_wasm_stubs.cc"'):
+        l.bullet("Skipped: rust wasm Abseil log", l.PURPLE)
+        return
+
+    source = """absl_source_set("globals") {
+  sources = [ "globals.cc" ]"""
+
+    target = """absl_source_set("globals") {
+  sources = [ "globals.cc" ]
+  if (current_os == "wasm32") {
+    defines = [ "fwrite=pdfium_wasm_absl_log_fwrite" ]
+    sources += [ "globals_wasm_stubs.cc" ]
+  }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm Abseil log", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_abseil_strings_config(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "strings",
+        "BUILD.gn",
+    )
+
+    if f.file_has_content(source_file, '"internal/str_format/output_wasm_stubs.cc"'):
+        l.bullet("Skipped: rust wasm Abseil strings", l.PURPLE)
+        return
+
+    source = """    "internal/str_format/output.cc",
+    "internal/str_format/parser.cc",
+  ]"""
+
+    target = """    "internal/str_format/output.cc",
+    "internal/str_format/parser.cc",
+  ]
+  if (current_os == "wasm32") {
+    defines = [ "fwrite=pdfium_wasm_absl_str_format_fwrite" ]
+    sources += [ "internal/str_format/output_wasm_stubs.cc" ]
+  }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm Abseil strings", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_abseil_synchronization_config(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "synchronization",
+        "BUILD.gn",
+    )
+
+    if f.file_has_content(source_file, '"internal/pthread_waiter_wasm_stubs.cc"'):
+        l.bullet("Skipped: rust wasm Abseil synchronization", l.PURPLE)
+        return
+
+    source = """    "internal/win32_waiter.cc",
+    "mutex.cc",
+    "notification.cc",
+  ]"""
+
+    target = """    "internal/win32_waiter.cc",
+    "mutex.cc",
+    "notification.cc",
+  ]
+  if (current_os == "wasm32") {
+    defines = [
+      "pthread_cond_signal=pdfium_wasm_absl_pthread_cond_signal",
+      "pthread_cond_timedwait=pdfium_wasm_absl_pthread_cond_timedwait",
+      "pthread_cond_wait=pdfium_wasm_absl_pthread_cond_wait",
+      "pthread_mutex_lock=pdfium_wasm_absl_pthread_mutex_lock",
+      "pthread_mutex_unlock=pdfium_wasm_absl_pthread_mutex_unlock",
+    ]
+    sources += [ "internal/pthread_waiter_wasm_stubs.cc" ]
+  }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm Abseil synchronization", l.GREEN)
 
 
 # -----------------------------------------------------------------------------
@@ -1412,6 +1550,160 @@ ABSL_NAMESPACE_END
 
     f.set_file_content(source_file, content)
     l.bullet("Applied: rust wasm Abseil random", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_abseil_wasm_log(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "log",
+        "internal",
+        "globals_wasm_stubs.cc",
+    )
+
+    content = """#include <cstddef>
+#include <cstdio>
+
+#undef fwrite
+
+extern "C" size_t pdfium_wasm_absl_log_fwrite(const void* ptr,
+                                               size_t size,
+                                               size_t count,
+                                               FILE* stream) {
+  (void)ptr;
+  (void)size;
+  (void)count;
+  (void)stream;
+  return 0;
+}
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm Abseil log", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_abseil_wasm_strings(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "strings",
+        "internal",
+        "str_format",
+        "output_wasm_stubs.cc",
+    )
+
+    content = """#include <cstddef>
+#include <cstdio>
+
+#undef fwrite
+
+extern "C" size_t pdfium_wasm_absl_str_format_fwrite(const void* ptr,
+                                                      size_t size,
+                                                      size_t count,
+                                                      FILE* stream) {
+  (void)ptr;
+  (void)size;
+  (void)count;
+  (void)stream;
+  return 0;
+}
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm Abseil strings", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_abseil_wasm_synchronization(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "synchronization",
+        "internal",
+        "pthread_waiter_wasm_stubs.cc",
+    )
+
+    content = """#include <pthread.h>
+
+#include <cerrno>
+
+#undef pthread_cond_signal
+#undef pthread_cond_timedwait
+#undef pthread_cond_wait
+#undef pthread_mutex_lock
+#undef pthread_mutex_unlock
+
+extern "C" int pdfium_wasm_absl_pthread_cond_signal(pthread_cond_t* cond) {
+  (void)cond;
+  return 0;
+}
+
+extern "C" int pdfium_wasm_absl_pthread_cond_timedwait(
+    pthread_cond_t* cond,
+    pthread_mutex_t* mutex,
+    const struct timespec* abstime) {
+  (void)cond;
+  (void)mutex;
+  (void)abstime;
+  return ETIMEDOUT;
+}
+
+extern "C" int pdfium_wasm_absl_pthread_cond_wait(pthread_cond_t* cond,
+                                                  pthread_mutex_t* mutex) {
+  (void)cond;
+  (void)mutex;
+  return 0;
+}
+
+extern "C" int pdfium_wasm_absl_pthread_mutex_lock(pthread_mutex_t* mutex) {
+  (void)mutex;
+  return 0;
+}
+
+extern "C" int pdfium_wasm_absl_pthread_mutex_unlock(pthread_mutex_t* mutex) {
+  (void)mutex;
+  return 0;
+}
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm Abseil synchronization", l.GREEN)
+
+
+def _write_abseil_wasm_random_hwaes(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "random",
+        "internal",
+        "randen_hwaes_wasm_stubs.cc",
+    )
+
+    content = """#include <cstdio>
+
+#undef fprintf
+
+extern "C" int pdfium_wasm_absl_random_fprintf(FILE* stream,
+                                                const char* format,
+                                                ...) {
+  (void)stream;
+  (void)format;
+  return 0;
+}
+"""
+
+    f.set_file_content(source_file, content)
+    l.bullet("Applied: rust wasm Abseil random HWAES", l.GREEN)
 
 
 # -----------------------------------------------------------------------------

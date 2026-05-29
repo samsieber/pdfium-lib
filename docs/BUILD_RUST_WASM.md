@@ -130,14 +130,13 @@ obj/libpdfium.a`.
 
 The archive inspection currently reports:
 
-- `obj/libpdfium.a` is produced with 918 objects.
-- The archive has 19,160 defined symbols and 15,821 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 228
+- `obj/libpdfium.a` is produced with 922 objects.
+- The archive has 19,168 defined symbols and 15,821 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 221
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
-- The main browser-specific risk is the 4 browser-sensitive POSIX symbols:
-  `fwrite`, `pthread_mutex_lock`, `pthread_mutex_unlock`, and `fprintf`.
+- The archive analyzer reports no remaining browser-sensitive POSIX symbols.
 
 The first POSIX reduction replaces Pdfium's filename-based file access and
 folder enumeration with wasm-only unavailable implementations. This removes
@@ -227,6 +226,18 @@ final Rust/JavaScript wrapper should pass any required rendering policy
 explicitly. This removes the `ftinit.o` `getenv` origin from the archive
 boundary.
 
-The next phase is reducing or isolating the remaining POSIX-facing objects
-before attempting to link the archive from Rust. The remaining browser-sensitive
-origins are Abseil logging and pthread waiter fallbacks.
+The twelfth POSIX reduction redirects Abseil's remaining stdio diagnostics and
+pthread waiter calls to wasm-local stubs. Abseil logging and string-format
+`FILE*` sinks discard output, Randen's hardware-detection diagnostic printing
+is suppressed, and the pthread waiter lock/condition hooks become compile-probe
+stubs. This removes the `globals.o`, `output.o`, `randen_hwaes.o`, and
+`pthread_waiter.o` browser-sensitive origins from the archive boundary. The
+pthread bridge is not a real browser threading policy; before exposing Pdfium
+to concurrent Rust/JavaScript callers, the final integration should choose
+between explicit single-threaded use, wasm threads, or a dedicated Abseil
+waiter replacement.
+
+The next phase is attempting the Rust-side link against the static archive.
+The remaining unresolved symbols are expected runtime edges: libc/libc++ ABI,
+compiler-rt helpers, wasm internals such as `__stack_pointer` and
+`__indirect_function_table`, and ordinary C math/string/wide-char functions.
