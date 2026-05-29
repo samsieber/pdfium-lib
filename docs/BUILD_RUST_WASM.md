@@ -130,13 +130,13 @@ obj/libpdfium.a`.
 
 The archive inspection currently reports:
 
-- `obj/libpdfium.a` is produced with 917 objects.
-- The archive has 19,167 defined symbols and 15,870 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 251
+- `obj/libpdfium.a` is produced with 913 objects.
+- The archive has 19,123 defined symbols and 15,832 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 244
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
-- The main browser-specific risk is the 20 browser-sensitive POSIX symbols,
+- The main browser-specific risk is the 15 browser-sensitive POSIX symbols,
   led by `fwrite`, `fread`, `time`, `fclose`, `fopen`, `getenv`, `fseek`,
   `pthread_mutex_lock`, `pthread_mutex_unlock`, `fprintf`, `ftell`, and
   `gettimeofday`.
@@ -172,8 +172,15 @@ instead of reading `TZ`, `LOCALTIME`, or `/etc/localtime`. This removes
 important, the final integration should provide them explicitly from
 JavaScript rather than reading host files or environment variables.
 
+The fifth POSIX reduction removes zlib's gzip file convenience layer from the
+wasm build. Pdfium's PDF streams use zlib's in-memory deflate/inflate APIs, and
+the checkout has no non-zlib users of `gzopen()`, `gzread()`, `gzwrite()`, or
+`gzclose()`. Dropping `gzclose.c`, `gzlib.c`, `gzread.c`, and `gzwrite.c`
+removes the remaining archive references to `open`, `read`, `write`, `close`,
+and `lseek`.
+
 The next phase is reducing or isolating the remaining POSIX-facing objects
 before attempting to link the archive from Rust. The first places to inspect are
-zlib gz file helpers, LittleCMS file/debug helpers, ICU data/timezone helpers,
-OpenJPEG file/debug helpers, and Pdfium's remaining `fx_extension.o` time call
-plus `fx_random.o`'s `getpid` / `gettimeofday` seed path.
+LittleCMS file/debug helpers, ICU data/timezone helpers, OpenJPEG file/debug
+helpers, and Pdfium's remaining `fx_extension.o` time call plus
+`fx_random.o`'s `getpid` / `gettimeofday` seed path.

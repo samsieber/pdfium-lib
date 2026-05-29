@@ -37,6 +37,7 @@ def run_task_patch():
     _patch_icu_config(source_dir)
     _patch_freetype_config(source_dir)
     _patch_freetype_sources(source_dir)
+    _patch_zlib_config(source_dir)
     _patch_abseil_config(source_dir)
     _patch_abseil_base_config(source_dir)
     _patch_abseil_random_config(source_dir)
@@ -798,6 +799,35 @@ def _patch_freetype_sources(source_dir):
 
     f.replace_in_file(source_file, source, target)
     l.bullet("Applied: rust wasm FreeType sources", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _patch_zlib_config(source_dir):
+    source_file = os.path.join(source_dir, "third_party", "zlib", "BUILD.gn")
+
+    if f.file_has_content(source_file, 'sources -= [\n      "gzclose.c",'):
+        l.bullet("Skipped: rust wasm zlib", l.PURPLE)
+        return
+
+    source = """    "zutil.c",
+    "zutil.h",
+  ]"""
+
+    target = """    "zutil.c",
+    "zutil.h",
+  ]
+
+  if (current_os == "wasm32") {
+    sources -= [
+      "gzclose.c",
+      "gzlib.c",
+      "gzread.c",
+      "gzwrite.c",
+    ]
+  }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm zlib", l.GREEN)
 
 
 # -----------------------------------------------------------------------------
