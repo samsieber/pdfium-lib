@@ -53,7 +53,8 @@ python3 make.py analyze-rust-wasm
 - Avoids Emscripten packaging flags such as `MODULARIZE`, `ccall`, and
   `STANDALONE_WASM` for the Rust link path.
 - Adds an `analyze-rust-wasm` checkpoint to inspect GN args, target metadata,
-  and accidental Emscripten references before attempting compilation.
+  accidental Emscripten references, and the static archive's unresolved symbol
+  boundary.
 - Accepts `RUST_WASM_SYSROOT=/path/to/sysroot` when C/C++ headers and libc-like
   symbols are needed by Pdfium's C/C++ dependencies.
 - Accepts `RUST_WASM_SYSROOT_TARGET=wasm32-wasip1` for a WASI headers probe
@@ -71,10 +72,6 @@ python3 make.py analyze-rust-wasm
   removed, stubbed, or provided by a compatible sysroot and the Rust final link.
 
 ## Current known blocker
-
-The pure `wasm32-unknown-unknown` target does not provide C library headers.
-The first compile attempt currently fails in `third_party/libjpeg_turbo` on
-`#include <stdlib.h>`.
 
 For a browser build, a WASI sysroot is only valid as a diagnostic step if the
 resulting static archive can still be linked into a `wasm32-unknown-unknown`
@@ -129,6 +126,24 @@ handler sources. Browser wasm has no Unix signal context to inspect, so this is
 preferable to linking WASI signal emulation into the final module.
 
 With the Abseil replacements in place, the compile probe reaches `AR
-obj/libpdfium.a`. The next phase is archive inspection: verify object imports,
-undefined symbols, and any accidental WASI or Emscripten runtime assumptions
-before attempting to link the archive from Rust.
+obj/libpdfium.a`.
+
+The archive inspection currently reports:
+
+- `obj/libpdfium.a` is produced with 921 objects.
+- The archive has 19,290 defined symbols and 16,023 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 272
+  external symbols remain.
+- Generated files still contain no Emscripten runtime settings and no
+  `wasi_snapshot_preview1` references.
+- The main browser-specific risk is the 27 browser-sensitive POSIX symbols,
+  led by `fread`, `fclose`, `fopen`, `fwrite`, `fseek`, `open`, `read`,
+  `close`, `getenv`, `time`, `pthread_mutex_lock`, and
+  `pthread_mutex_unlock`.
+
+The next phase is reducing or isolating those POSIX-facing objects before
+attempting to link the archive from Rust. The first places to inspect are
+Pdfium file access (`cfx_fileaccess_posix.o`), font discovery
+(`cfx_folderfontinfo.o`), FreeType file helpers (`ftsystem.o`), Abseil time
+zone helpers, zlib gz file helpers, LittleCMS file/debug helpers, and
+`fx_random.o`'s `getpid` / `gettimeofday` seed path.

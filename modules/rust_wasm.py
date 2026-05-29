@@ -1,5 +1,8 @@
 import os
+import re
+import subprocess
 import tarfile
+from collections import Counter, defaultdict
 
 from pygemstones.io import file as f
 from pygemstones.system import runner as r
@@ -167,6 +170,9 @@ def run_task_analyze():
             l.colored("Generated Ninja WASI imports...", l.YELLOW)
             _run_generated_file_scan(full_out_dir, "wasi_snapshot_preview1")
 
+            l.colored("Static archive boundary...", l.YELLOW)
+            _run_archive_inspection(source_dir, full_out_dir)
+
     l.ok()
 
 
@@ -194,6 +200,242 @@ def _run_generated_file_scan(root_dir, needle):
         ).format(root_dir, needle),
     ]
     r.run(command)
+
+
+# -----------------------------------------------------------------------------
+def _run_archive_inspection(source_dir, full_out_dir):
+    archive_path = os.path.join(full_out_dir, "obj", "libpdfium.a")
+
+    if not os.path.isfile(archive_path):
+        l.bullet(
+            "Missing archive: {0}. Run ninja for the Pdfium target first.".format(
+                archive_path
+            ),
+            l.YELLOW,
+        )
+        return
+
+    llvm_dir = os.path.join(
+        source_dir, "third_party", "llvm-build", "Release+Asserts", "bin"
+    )
+    ar_tool = os.path.join(llvm_dir, "llvm-ar")
+    nm_tool = os.path.join(llvm_dir, "llvm-nm")
+
+    members = _run_tool([ar_tool, "t", archive_path]).splitlines()
+    defined, _ = _read_archive_symbols(nm_tool, archive_path, "--defined-only")
+    undefined, undefined_by_symbol = _read_archive_symbols(
+        nm_tool, archive_path, "--undefined-only"
+    )
+    unresolved = Counter(
+        {symbol: count for symbol, count in undefined.items() if symbol not in defined}
+    )
+
+    archive_size = os.path.getsize(archive_path)
+    l.bullet("Archive: {0} ({1:,} bytes)".format(archive_path, archive_size), l.GREEN)
+    l.bullet("Objects: {0:,}".format(len(members)), l.GREEN)
+    l.bullet("Defined symbols: {0:,}".format(len(defined)), l.GREEN)
+    l.bullet("Raw undefined references: {0:,}".format(sum(undefined.values())), l.GREEN)
+    l.bullet(
+        "External unresolved symbols after archive self-resolution: {0:,}".format(
+            len(unresolved)
+        ),
+        l.GREEN,
+    )
+
+    grouped = defaultdict(list)
+    for symbol, count in unresolved.most_common():
+        grouped[_classify_unresolved_symbol(symbol)].append((symbol, count))
+
+    for category in [
+        "browser-sensitive POSIX",
+        "C/C++ runtime",
+        "compiler/wasm runtime",
+        "wasm internals",
+        "other",
+    ]:
+        entries = grouped.get(category, [])
+        if not entries:
+            continue
+        sample = ", ".join(
+            "{0} ({1})".format(symbol, count) for symbol, count in entries[:12]
+        )
+        l.bullet("{0}: {1} symbols; {2}".format(category, len(entries), sample), l.GREEN)
+
+    posix_entries = grouped.get("browser-sensitive POSIX", [])
+    if posix_entries:
+        l.colored("Browser-sensitive unresolved symbol origins...", l.YELLOW)
+        for symbol, count in posix_entries[:20]:
+            origins = undefined_by_symbol.get(symbol, Counter()).most_common(5)
+            origin_text = ", ".join(
+                "{0} ({1})".format(obj, obj_count) for obj, obj_count in origins
+            )
+            l.bullet("{0} ({1}): {2}".format(symbol, count, origin_text), l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _read_archive_symbols(nm_tool, archive_path, nm_mode):
+    output = _run_tool([nm_tool, nm_mode, archive_path])
+    symbols = Counter()
+    by_symbol = defaultdict(Counter)
+    current_object = None
+
+    for line in output.splitlines():
+        if line.endswith(":") and not line.startswith(" "):
+            current_object = line[:-1]
+            continue
+
+        parts = line.split()
+        if not parts:
+            continue
+
+        if parts[0] == "U" and len(parts) >= 2:
+            symbol = parts[1]
+        else:
+            symbol = parts[-1]
+
+        if not _looks_like_symbol(symbol):
+            continue
+
+        symbols[symbol] += 1
+        if current_object:
+            by_symbol[symbol][os.path.basename(current_object)] += 1
+
+    return symbols, by_symbol
+
+
+# -----------------------------------------------------------------------------
+def _looks_like_symbol(symbol):
+    return bool(re.search(r"[A-Za-z_]", symbol))
+
+
+# -----------------------------------------------------------------------------
+def _classify_unresolved_symbol(symbol):
+    browser_sensitive = {
+        "access",
+        "chdir",
+        "close",
+        "closedir",
+        "fclose",
+        "fcntl",
+        "fdopen",
+        "fflush",
+        "fopen",
+        "fprintf",
+        "fread",
+        "fseek",
+        "fstat",
+        "fsync",
+        "ftell",
+        "ftruncate",
+        "fwrite",
+        "getcwd",
+        "getenv",
+        "getpid",
+        "gettimeofday",
+        "isatty",
+        "lseek",
+        "mkdir",
+        "mmap",
+        "munmap",
+        "open",
+        "opendir",
+        "pthread_create",
+        "pthread_join",
+        "pthread_mutex_lock",
+        "pthread_mutex_unlock",
+        "read",
+        "readdir",
+        "remove",
+        "rename",
+        "rmdir",
+        "stat",
+        "time",
+        "unlink",
+        "write",
+    }
+    runtime_symbols = {
+        "__assert_fail",
+        "__cxa_atexit",
+        "__cxa_pure_virtual",
+        "__errno_location",
+        "__libcpp_verbose_abort",
+        "abort",
+        "calloc",
+        "free",
+        "localeconv",
+        "malloc",
+        "memchr",
+        "memcmp",
+        "memcpy",
+        "memmove",
+        "memset",
+        "posix_memalign",
+        "qsort",
+        "realloc",
+        "snprintf",
+        "sprintf",
+        "strcmp",
+        "strcpy",
+        "strlen",
+        "strncmp",
+        "strncpy",
+        "strtol",
+        "strtoul",
+        "vsnprintf",
+    }
+    compiler_runtime_prefixes = (
+        "__ashl",
+        "__ashr",
+        "__div",
+        "__fix",
+        "__float",
+        "__mul",
+        "__popcount",
+        "__trunc",
+        "__udiv",
+        "__umod",
+    )
+    cpp_prefixes = (
+        "_ZNSt3__2",
+        "_ZSt",
+        "_ZTI",
+        "_ZTS",
+        "_ZTV",
+        "_Zda",
+        "_Zdl",
+        "_Znam",
+        "_Znwm",
+        "__cxa",
+    )
+    wasm_internals = {
+        "__indirect_function_table",
+        "__memory_base",
+        "__stack_pointer",
+        "__table_base",
+    }
+
+    if symbol in browser_sensitive:
+        return "browser-sensitive POSIX"
+    if symbol in runtime_symbols or symbol.startswith(cpp_prefixes):
+        return "C/C++ runtime"
+    if symbol in wasm_internals:
+        return "wasm internals"
+    if symbol.startswith(compiler_runtime_prefixes):
+        return "compiler/wasm runtime"
+    return "other"
+
+
+# -----------------------------------------------------------------------------
+def _run_tool(command):
+    result = subprocess.run(
+        command,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        errors="replace",
+    )
+    return result.stdout
 
 
 # -----------------------------------------------------------------------------
