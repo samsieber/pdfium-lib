@@ -130,14 +130,14 @@ obj/libpdfium.a`.
 
 The archive inspection currently reports:
 
-- `obj/libpdfium.a` is produced with 920 objects.
-- The archive has 19,241 defined symbols and 15,936 raw undefined references.
-- After subtracting symbols defined by other objects in the archive, 263
+- `obj/libpdfium.a` is produced with 917 objects.
+- The archive has 19,167 defined symbols and 15,870 raw undefined references.
+- After subtracting symbols defined by other objects in the archive, 251
   external symbols remain.
 - Generated files still contain no Emscripten runtime settings and no
   `wasi_snapshot_preview1` references.
 - The main browser-specific risk is the 20 browser-sensitive POSIX symbols,
-  led by `fwrite`, `fread`, `getenv`, `fclose`, `fopen`, `time`, `fseek`,
+  led by `fwrite`, `fread`, `time`, `fclose`, `fopen`, `getenv`, `fseek`,
   `pthread_mutex_lock`, `pthread_mutex_unlock`, `fprintf`, `ftell`, and
   `gettimeofday`.
 
@@ -163,8 +163,17 @@ Pdfium or a dependency later relies on Abseil random seeding at runtime, the
 final browser integration should inject entropy from Rust/JavaScript instead
 of pretending a POSIX entropy device exists.
 
+The fourth POSIX reduction replaces CCTZ's file-backed time-zone loading with
+wasm-only UTC/fixed-offset support. Named IANA zones now fail back to UTC
+through Abseil's normal failed-load path, and `local_time_zone()` returns UTC
+instead of reading `TZ`, `LOCALTIME`, or `/etc/localtime`. This removes
+`time_zone_info.o`, `time_zone_libc.o`, `time_zone_lookup.o`, and
+`zone_info_source.o` from the archive. If browser-local time zones become
+important, the final integration should provide them explicitly from
+JavaScript rather than reading host files or environment variables.
+
 The next phase is reducing or isolating the remaining POSIX-facing objects
 before attempting to link the archive from Rust. The first places to inspect are
-Abseil time-zone helpers, zlib gz file helpers, LittleCMS file/debug helpers,
-ICU data/timezone helpers, OpenJPEG file/debug helpers, and
-`fx_random.o`'s `getpid` / `gettimeofday` seed path.
+zlib gz file helpers, LittleCMS file/debug helpers, ICU data/timezone helpers,
+OpenJPEG file/debug helpers, and Pdfium's remaining `fx_extension.o` time call
+plus `fx_random.o`'s `getpid` / `gettimeofday` seed path.

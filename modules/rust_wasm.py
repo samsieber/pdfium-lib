@@ -40,11 +40,13 @@ def run_task_patch():
     _patch_abseil_config(source_dir)
     _patch_abseil_base_config(source_dir)
     _patch_abseil_random_config(source_dir)
+    _patch_abseil_time_config(source_dir)
     _write_freetype_wasm_stdlib(source_dir)
     _write_freetype_wasm_system(source_dir)
     _write_abseil_wasm_debugging(source_dir)
     _write_abseil_wasm_base(source_dir)
     _write_abseil_wasm_random(source_dir)
+    _write_abseil_wasm_time(source_dir)
     _write_fxcrt_wasm_files(source_dir)
     _write_fxge_wasm_platform(source_dir)
     _write_rust_wasm_setjmp_header(source_dir)
@@ -901,6 +903,50 @@ def _patch_abseil_random_config(source_dir):
 
 
 # -----------------------------------------------------------------------------
+def _patch_abseil_time_config(source_dir):
+    source_file = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "time",
+        "internal",
+        "cctz",
+        "BUILD.gn",
+    )
+
+    if f.file_has_content(source_file, '"src/time_zone_if_wasm.cc"'):
+        l.bullet("Skipped: rust wasm Abseil time", l.PURPLE)
+        return
+
+    source = """    "src/zone_info_source.cc",
+  ]"""
+
+    target = """    "src/zone_info_source.cc",
+  ]
+
+  if (current_os == "wasm32") {
+    sources -= [
+      "src/time_zone_if.cc",
+      "src/time_zone_info.cc",
+      "src/time_zone_info.h",
+      "src/time_zone_libc.cc",
+      "src/time_zone_libc.h",
+      "src/time_zone_lookup.cc",
+      "src/tzfile.h",
+      "src/zone_info_source.cc",
+    ]
+    sources += [
+      "src/time_zone_if_wasm.cc",
+      "src/time_zone_lookup_wasm.cc",
+    ]
+  }"""
+
+    f.replace_in_file(source_file, source, target)
+    l.bullet("Applied: rust wasm Abseil time", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
 def _write_abseil_wasm_debugging(source_dir):
     examine_stack_file = os.path.join(
         source_dir,
@@ -1126,6 +1172,176 @@ ABSL_NAMESPACE_END
 
     f.set_file_content(source_file, content)
     l.bullet("Applied: rust wasm Abseil random", l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def _write_abseil_wasm_time(source_dir):
+    cctz_dir = os.path.join(
+        source_dir,
+        "third_party",
+        "abseil-cpp",
+        "absl",
+        "time",
+        "internal",
+        "cctz",
+        "src",
+    )
+    time_zone_if_file = os.path.join(cctz_dir, "time_zone_if_wasm.cc")
+    time_zone_lookup_file = os.path.join(cctz_dir, "time_zone_lookup_wasm.cc")
+
+    time_zone_if_content = """#include "absl/time/internal/cctz/src/time_zone_if.h"
+
+#include <memory>
+#include <string>
+
+#include "absl/base/config.h"
+#include "absl/time/internal/cctz/src/time_zone_fixed.h"
+
+namespace absl {
+ABSL_NAMESPACE_BEGIN
+namespace time_internal {
+namespace cctz {
+
+namespace {
+
+class WasmFixedTimeZone : public TimeZoneIf {
+ public:
+  explicit WasmFixedTimeZone(seconds offset)
+      : offset_(offset), name_(FixedOffsetToName(offset)),
+        abbr_(FixedOffsetToAbbr(offset)) {}
+
+  time_zone::absolute_lookup BreakTime(
+      const time_point<seconds>& tp) const override {
+    const auto shifted = civil_second() + ToUnixSeconds(tp) + offset_.count();
+    return {shifted, static_cast<int>(offset_.count()), false, abbr_.c_str()};
+  }
+
+  time_zone::civil_lookup MakeTime(const civil_second& cs) const override {
+    const time_point<seconds> tp =
+        FromUnixSeconds(cs - civil_second() - offset_.count());
+    return {time_zone::civil_lookup::UNIQUE, tp, tp, tp};
+  }
+
+  bool NextTransition(const time_point<seconds>&,
+                      time_zone::civil_transition*) const override {
+    return false;
+  }
+
+  bool PrevTransition(const time_point<seconds>&,
+                      time_zone::civil_transition*) const override {
+    return false;
+  }
+
+  std::string Version() const override {
+    return std::string();
+  }
+
+  std::string Description() const override {
+    return name_;
+  }
+
+ private:
+  seconds offset_;
+  std::string name_;
+  std::string abbr_;
+};
+
+}  // namespace
+
+std::unique_ptr<TimeZoneIf> TimeZoneIf::UTC() {
+  return std::unique_ptr<TimeZoneIf>(new WasmFixedTimeZone(seconds::zero()));
+}
+
+std::unique_ptr<TimeZoneIf> TimeZoneIf::Make(const std::string& name) {
+  seconds offset;
+  if (FixedOffsetFromName(name, &offset)) {
+    return std::unique_ptr<TimeZoneIf>(new WasmFixedTimeZone(offset));
+  }
+  return nullptr;
+}
+
+TimeZoneIf::~TimeZoneIf() {}
+
+}  // namespace cctz
+}  // namespace time_internal
+ABSL_NAMESPACE_END
+}  // namespace absl
+"""
+
+    time_zone_lookup_content = """#include "absl/time/internal/cctz/include/cctz/time_zone.h"
+
+#include <string>
+
+#include "absl/base/config.h"
+#include "absl/time/internal/cctz/src/time_zone_fixed.h"
+#include "absl/time/internal/cctz/src/time_zone_impl.h"
+
+namespace absl {
+ABSL_NAMESPACE_BEGIN
+namespace time_internal {
+namespace cctz {
+
+std::string time_zone::name() const { return effective_impl().Name(); }
+
+time_zone::absolute_lookup time_zone::lookup(
+    const time_point<seconds>& tp) const {
+  return effective_impl().BreakTime(tp);
+}
+
+time_zone::civil_lookup time_zone::lookup(const civil_second& cs) const {
+  return effective_impl().MakeTime(cs);
+}
+
+bool time_zone::next_transition(const time_point<seconds>& tp,
+                                civil_transition* trans) const {
+  return effective_impl().NextTransition(tp, trans);
+}
+
+bool time_zone::prev_transition(const time_point<seconds>& tp,
+                                civil_transition* trans) const {
+  return effective_impl().PrevTransition(tp, trans);
+}
+
+std::string time_zone::version() const { return effective_impl().Version(); }
+
+std::string time_zone::description() const {
+  return effective_impl().Description();
+}
+
+const time_zone::Impl& time_zone::effective_impl() const {
+  if (impl_ == nullptr) {
+    return *time_zone::Impl::UTC().impl_;
+  }
+  return *impl_;
+}
+
+bool load_time_zone(const std::string& name, time_zone* tz) {
+  return time_zone::Impl::LoadTimeZone(name, tz);
+}
+
+time_zone utc_time_zone() {
+  return time_zone::Impl::UTC();
+}
+
+time_zone fixed_time_zone(const seconds& offset) {
+  time_zone tz;
+  load_time_zone(FixedOffsetToName(offset), &tz);
+  return tz;
+}
+
+time_zone local_time_zone() {
+  return utc_time_zone();
+}
+
+}  // namespace cctz
+}  // namespace time_internal
+ABSL_NAMESPACE_END
+}  // namespace absl
+"""
+
+    f.set_file_content(time_zone_if_file, time_zone_if_content)
+    f.set_file_content(time_zone_lookup_file, time_zone_lookup_content)
+    l.bullet("Applied: rust wasm Abseil time", l.GREEN)
 
 
 # -----------------------------------------------------------------------------
