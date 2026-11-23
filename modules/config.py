@@ -3,8 +3,8 @@ debug = False
 task = ""
 
 # PDFium settings.
-pdfium_git_branch = "chromium/8046"
-# The branch reference is https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8046.
+pdfium_git_branch = "chromium/8125"
+# The branch reference is https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8125.
 # Changing it also requires changing docker/android/Dockerfile and docker/wasm/Dockerfile.
 
 # Emscripten SDK settings.
