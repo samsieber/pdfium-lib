@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -150,6 +151,7 @@ def get_build_args(
     target_environment=None,
     libc=None,
     enable_v8=False,
+    static_wasm_sysroot=None,
 ):
     args = []
 
@@ -171,7 +173,22 @@ def get_build_args(
         args.append("v8_use_external_startup_data=false")
         args.append("v8_enable_i18n_support=false")
 
-    if target_os == "android":
+    if target_os == "wasm32":
+        args.extend(
+            [
+                "is_official_build=true",
+                "pdf_is_complete_lib=true",
+                "pdf_is_standalone=true",
+                "is_clang=true",
+                "use_custom_libcxx=false",
+                "clang_use_chrome_plugins=false",
+                f'rust_wasm_target="{c.static_wasm_target}"',
+                f'rust_wasm_sysroot_target="{c.static_wasm_sysroot_target}"',
+                "rust_wasm_simd=true",
+                f"rust_wasm_sysroot={json.dumps(static_wasm_sysroot)}",
+            ]
+        )
+    elif target_os == "android":
         args.append("clang_use_chrome_plugins=false")
         args.append("default_min_sdk_version=23")
         args.append("pdf_is_standalone=true")

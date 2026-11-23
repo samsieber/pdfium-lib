@@ -68,6 +68,13 @@ Tasks:
   - publish-wasm
   - publish-to-web-wasm
   - archive-wasm
+
+  - build-pdfium-static-wasm
+  - patch-static-wasm
+  - build-static-wasm
+  - install-static-wasm
+  - test-static-wasm
+  - archive-static-wasm
 """
 
 from docopt import docopt
@@ -80,6 +87,7 @@ import modules.config as c
 import modules.ios as ios
 import modules.linux as linux
 import modules.macos as macos
+import modules.static_wasm as static_wasm
 import modules.wasm as wasm
 import modules.windows as windows
 
@@ -303,6 +311,19 @@ def main(options):
     # Archives the WASM libraries.
     elif task == "archive-wasm":
         wasm.run_task_archive()
+
+    elif task == "build-pdfium-static-wasm":
+        static_wasm.run_task_build_pdfium()
+    elif task == "patch-static-wasm":
+        static_wasm.run_task_patch()
+    elif task == "build-static-wasm":
+        static_wasm.run_task_build()
+    elif task == "install-static-wasm":
+        static_wasm.run_task_install()
+    elif task == "test-static-wasm":
+        static_wasm.run_task_test()
+    elif task == "archive-static-wasm":
+        static_wasm.run_task_archive()
 
     #######################
     # Unknown task.

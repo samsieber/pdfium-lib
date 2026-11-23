@@ -109,6 +109,10 @@ Check tutorial here: [Build for Android](docs/BUILD_ANDROID.md)
 
 Check tutorial here: [Build for WASM](docs/BUILD_WASM.md)
 
+## How to compile static PDFium for WebAssembly
+
+See [Build static PDFium for WebAssembly](docs/BUILD_STATIC_WASM.md).
+
 ## Prebuilt binary
 
 Access releases page to download prebuilt binaries:

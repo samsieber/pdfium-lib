@@ -1,5 +1,6 @@
 import os
 import re
+from pathlib import Path
 
 from pygemstones.io import file as f
 from pygemstones.util import log as l
@@ -174,3 +175,40 @@ def apply_windows_ntddi_version(target):
     f.replace_in_file(source_file, found.group(0), '"NTDDI_VERSION={0}"'.format(newest))
 
     l.bullet("Applied: windows ntddi version {0}".format(newest), l.GREEN)
+
+
+# -----------------------------------------------------------------------------
+def apply_static_wasm(target):
+    from modules.static_wasm_build_edits import EDITS, SOURCES
+
+    source_dir = os.path.join("build", target, "pdfium")
+    templates = os.path.join("extras", "static-wasm", "sources")
+    changes = {}
+    for relative, original, replacement in EDITS:
+        path = Path(os.path.join(source_dir, relative))
+        text = changes[path] if path in changes else path.read_text()
+        if text.count(original) == 1:
+            changes[path] = text.replace(original, replacement, 1)
+        elif text.count(replacement) != 1:
+            raise RuntimeError(f"Static WASM source edit does not match {path}")
+
+    for relative in SOURCES:
+        path = Path(os.path.join(source_dir, relative))
+        contents = Path(os.path.join(templates, relative)).read_bytes()
+        if path.exists():
+            if path.read_bytes() != contents:
+                raise RuntimeError(f"Static WASM source template conflicts with {path}")
+        else:
+            changes[path] = contents
+
+    for path, contents in changes.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(contents, bytes):
+            path.write_bytes(contents)
+        else:
+            path.write_text(contents)
+
+    if changes:
+        l.bullet("Applied: static WebAssembly sources", l.GREEN)
+    else:
+        l.bullet("Skipped: static WebAssembly sources", l.PURPLE)

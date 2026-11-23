@@ -95,3 +95,12 @@ shared_lib_wasm = False
 targets_wasm = [
     {"target_os": "emscripten", "target_cpu": "wasm", "pdfium_os": "emscripten"},
 ]
+
+# Settings for static WebAssembly.
+configurations_static_wasm = ["release"]
+shared_lib_static_wasm = False
+targets_static_wasm = [
+    {"target_os": "static-wasm", "target_cpu": "wasm", "pdfium_os": "wasm32"},
+]
+static_wasm_target = "wasm32-unknown-unknown"
+static_wasm_sysroot_target = "wasm32-wasip1"
