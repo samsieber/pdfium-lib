@@ -4,6 +4,7 @@ import subprocess
 import tarfile
 
 from pygemstones.io import file as f
+from wasmtime import Engine, Module
 
 import modules.common as cm
 import modules.config as c
@@ -80,6 +81,7 @@ def run_task_test():
             clang = os.path.join(
                 source, "third_party", "llvm-build", "Release+Asserts", "bin", "clang"
             )
+            module_path = os.path.join(source, "out", "static-wasm-smoke.wasm")
             subprocess.run(
                 [
                     clang,
@@ -96,10 +98,18 @@ def run_task_test():
                     "-lc",
                     "-lm",
                     "-o",
-                    os.path.join(source, "out", "static-wasm-smoke.wasm"),
+                    module_path,
                 ],
                 check=True,
             )
+            module = Module.from_file(Engine(), module_path)
+            for item in module.imports:
+                if item.module == "wasi_snapshot_preview1":
+                    continue
+                if (item.module, item.name) != ("env", "__multi3"):
+                    raise RuntimeError(
+                        f"Unexpected WASM import: {item.module}.{item.name}"
+                    )
 
 
 # -----------------------------------------------------------------------------

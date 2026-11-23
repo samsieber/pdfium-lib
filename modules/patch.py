@@ -199,9 +199,10 @@ def _apply_static_wasm_edits(target, edits, sources, label):
     for relative, original, replacement in edits:
         path = Path(os.path.join(source_dir, relative))
         text = changes[path] if path in changes else path.read_text()
-        if text.count(original) == 1:
+        matches = text.count(original)
+        if matches == 1:
             changes[path] = text.replace(original, replacement, 1)
-        elif text.count(replacement) != 1:
+        elif matches != 0 or text.count(replacement) != 1:
             raise RuntimeError(f"Static WASM source edit does not match {path}")
 
     for relative in sources:
