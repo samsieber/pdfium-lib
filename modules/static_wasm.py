@@ -21,6 +21,8 @@ def run_task_build_pdfium():
 def run_task_patch():
     for target in c.targets_static_wasm:
         patch.apply_static_wasm(target["target_os"])
+        if os.environ.get("PDFIUM_STATIC_WASM_OPTIMIZE") == "1":
+            patch.apply_static_wasm_optimizations(target["target_os"])
 
 
 # -----------------------------------------------------------------------------

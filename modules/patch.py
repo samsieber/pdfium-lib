@@ -181,10 +181,22 @@ def apply_windows_ntddi_version(target):
 def apply_static_wasm(target):
     from modules.static_wasm_build_edits import EDITS, SOURCES
 
+    _apply_static_wasm_edits(target, EDITS, SOURCES, "static WebAssembly sources")
+
+
+# -----------------------------------------------------------------------------
+def apply_static_wasm_optimizations(target):
+    from modules.static_wasm_performance_edits import EDITS
+
+    _apply_static_wasm_edits(target, EDITS, (), "static WebAssembly optimizations")
+
+
+# -----------------------------------------------------------------------------
+def _apply_static_wasm_edits(target, edits, sources, label):
     source_dir = os.path.join("build", target, "pdfium")
     templates = os.path.join("extras", "static-wasm", "sources")
     changes = {}
-    for relative, original, replacement in EDITS:
+    for relative, original, replacement in edits:
         path = Path(os.path.join(source_dir, relative))
         text = changes[path] if path in changes else path.read_text()
         if text.count(original) == 1:
@@ -192,7 +204,7 @@ def apply_static_wasm(target):
         elif text.count(replacement) != 1:
             raise RuntimeError(f"Static WASM source edit does not match {path}")
 
-    for relative in SOURCES:
+    for relative in sources:
         path = Path(os.path.join(source_dir, relative))
         contents = Path(os.path.join(templates, relative)).read_bytes()
         if path.exists():
@@ -209,6 +221,6 @@ def apply_static_wasm(target):
             path.write_text(contents)
 
     if changes:
-        l.bullet("Applied: static WebAssembly sources", l.GREEN)
+        l.bullet(f"Applied: {label}", l.GREEN)
     else:
-        l.bullet("Skipped: static WebAssembly sources", l.PURPLE)
+        l.bullet(f"Skipped: {label}", l.PURPLE)
